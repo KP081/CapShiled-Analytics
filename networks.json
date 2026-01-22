@@ -1,0 +1,8 @@
+{
+  "sepolia": {
+    "CAPX": {
+      "address": "0x23ff4f13D06f085159c1D6142b5904BbA7233a6f",
+      "startBlock": 9941054
+    }
+  }
+}
