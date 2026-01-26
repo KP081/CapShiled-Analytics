@@ -3,6 +3,9 @@
     "CAPX": {
       "address": "0x23ff4f13D06f085159c1D6142b5904BbA7233a6f",
       "startBlock": 9941054
+    },
+    "CAPXVesting": {
+      "address": "0x6aF10F4387cAc67F19cd75F1c5612B4a673EDE28"
     }
   }
 }

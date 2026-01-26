@@ -8,52 +8,122 @@ dataSources:
     name: CAPX
     network: sepolia
     source:
-      address: "0x23ff4f13D06f085159c1D6142b5904BbA7233a6f"
+      address: "0x1c1705a515630C459FA0252098ecEeFfDda34746"
       abi: CAPX
-      startBlock: 9941054
+      startBlock: 10104632
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
       language: wasm/assemblyscript
+      file: ./src/mappings/analytics.ts
       entities:
-        - Approval
-        - DAOAddressUpdated
-        - ExemptionUpdated
-        - Paused
-        - RevenueMint
-        - RoleAdminChanged
-        - RoleGranted
-        - RoleRevoked
-        - Transfer
-        - TreasuryAddressUpdated
-        - TreasuryFee
-        - Unpaused
+        - Protocol
+        - User
+        - RoleAccount
+        - Transaction
+        - TransferEvent
+        - RevenueMintEvent
+        - TreasuryFeeEvent
+        - MintEvent
+        - BurnEvent
+        - DailyData
+        - WeeklyData
+        - MonthlyData
+        - YearlyData
+        - DailyUserActivity
+        - StakingEvent
+        - VestingEvent
+        - StakingPosition
+        - VestingPosition
+        - StakingStats
+        - VestingStats
       abis:
         - name: CAPX
           file: ./abis/CAPX.json
       eventHandlers:
-        - event: Approval(indexed address,indexed address,uint256)
-          handler: handleApproval
-        - event: DAOAddressUpdated(indexed address,indexed address)
-          handler: handleDAOAddressUpdated
-        - event: ExemptionUpdated(indexed address,bool)
-          handler: handleExemptionUpdated
-        - event: Paused(address)
-          handler: handlePaused
-        - event: RevenueMint(indexed address,uint256,uint256,uint256)
-          handler: handleRevenueMint
-        - event: RoleAdminChanged(indexed bytes32,indexed bytes32,indexed bytes32)
-          handler: handleRoleAdminChanged
-        - event: RoleGranted(indexed bytes32,indexed address,indexed address)
-          handler: handleRoleGranted
-        - event: RoleRevoked(indexed bytes32,indexed address,indexed address)
-          handler: handleRoleRevoked
         - event: Transfer(indexed address,indexed address,uint256)
           handler: handleTransfer
-        - event: TreasuryAddressUpdated(indexed address,indexed address)
-          handler: handleTreasuryAddressUpdated
+        - event: RoleGranted(indexed uint256,indexed address,indexed address)
+          handler: handleRoleGranted
+        - event: RoleRevoked(indexed uint256,indexed address,indexed address)
+          handler: handleRoleRevoked
+        - event: RevenueMint(uint256,uint256,uint256)
+          handler: handleRevenueMint
         - event: TreasuryFee(indexed address,indexed address,uint256)
           handler: handleTreasuryFee
-        - event: Unpaused(address)
-          handler: handleUnpaused
-      file: ./src/capx.ts
+        - event: Mint(indexed address,uint256,indexed uint256)
+          handler: handleMint
+        - event: Burn(indexed address,uint256)
+          handler: handleBurn
+
+  - kind: ethereum
+    name: CAPXVesting
+    network: sepolia
+    source:
+      address: "0x5FAa05Faed6142904eA5f140Ba7e6c81ae27402f"
+      abi: CAPXVesting
+      startBlock: 10104655
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/mappings/analytics.ts
+      entities:
+        - Protocol
+        - User
+        - VestingPosition
+        - VestingStats
+        - VestingEvent
+        - DailyData
+        - WeeklyData
+        - MonthlyData
+        - YearlyData
+        - DailyUserActivity
+      abis:
+        - name: CAPXVesting
+          file: ./abis/CAPXVesting.json
+      eventHandlers:
+         - event: VestingCreated(indexed address,uint256,uint256,uint256,uint256)
+           handler: handleVestingCreated
+         - event: TokensClaimed(indexed address,uint256,uint256)
+           handler: handleTokensClaimed
+         - event: VestingRevoked(indexed address,uint256,uint256)
+           handler: handleVestingRevoked
+
+  - kind: ethereum
+    name: CAPXStaking
+    network: sepolia
+    source:
+      address: "0x1cBe4cA3eCFd67231Dd88Cd448F862b3Be703982"
+      abi: CAPXStaking
+      startBlock: 10104671
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/mappings/analytics.ts
+      entities:
+        - Protocol
+        - User
+        - StakingPosition
+        - StakingStats
+        - StakingEvent
+        - DailyData
+        - WeeklyData
+        - MonthlyData
+        - YearlyData
+        - DailyUserActivity
+      abis:
+        - name: CAPXStaking
+          file: ./abis/CAPXStaking.json
+      eventHandlers:
+        - event: Staked(indexed address,uint256,uint8,uint256)
+          handler: handleStaked
+        - event: Unstaked(indexed address,uint256)
+          handler: handleUnstaked
+        - event: RewardClaimed(indexed address,uint256)
+          handler: handleRewardClaimed
+        - event: Compounded(indexed address,uint256)
+          handler: handleCompounded
+        - event: RewardsDeposited(indexed address,uint256)
+          handler: handleRewardsDeposited

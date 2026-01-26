@@ -1,113 +1,410 @@
-type Approval @entity(immutable: true) {
-  id: Bytes!
-  owner: Bytes! # address
-  spender: Bytes! # address
-  value: BigInt! # uint256
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
+# type Approval @entity(immutable: true) {
+#   id: Bytes!
+#   owner: Bytes! # address
+#   spender: Bytes! # address
+#   value: BigInt! # uint256
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type DAOAddressUpdated @entity(immutable: true) {
+#   id: Bytes!
+#   oldAddress: Bytes! # address
+#   newAddress: Bytes! # address
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type ExemptionUpdated @entity(immutable: true) {
+#   id: Bytes!
+#   account: Bytes! # address
+#   isExempt: Boolean! # bool
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type Paused @entity(immutable: true) {
+#   id: Bytes!
+#   account: Bytes! # address
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type RevenueMint @entity(immutable: true) {
+#   id: Bytes!
+#   to: Bytes! # address
+#   amount: BigInt! # uint256
+#   revenue: BigInt! # uint256
+#   marketValue: BigInt! # uint256
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type RoleAdminChanged @entity(immutable: true) {
+#   id: Bytes!
+#   role: Bytes! # bytes32
+#   previousAdminRole: Bytes! # bytes32
+#   newAdminRole: Bytes! # bytes32
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type RoleGranted @entity(immutable: true) {
+#   id: Bytes!
+#   role: Bytes! # bytes32
+#   account: Bytes! # address
+#   sender: Bytes! # address
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type RoleRevoked @entity(immutable: true) {
+#   id: Bytes!
+#   role: Bytes! # bytes32
+#   account: Bytes! # address
+#   sender: Bytes! # address
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type Transfer @entity(immutable: true) {
+#   id: Bytes!
+#   from: Bytes! # address
+#   to: Bytes! # address
+#   value: BigInt! # uint256
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type TreasuryAddressUpdated @entity(immutable: true) {
+#   id: Bytes!
+#   oldAddress: Bytes! # address
+#   newAddress: Bytes! # address
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type TreasuryFee @entity(immutable: true) {
+#   id: Bytes!
+#   from: Bytes! # address
+#   to: Bytes! # address
+#   amount: BigInt! # uint256
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type Unpaused @entity(immutable: true) {
+#   id: Bytes!
+#   account: Bytes! # address
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+# type OwnershipTransferred @entity(immutable: true) {
+#   id: Bytes!
+#   previousOwner: Bytes! # address
+#   newOwner: Bytes! # address
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type CAPXVestingPaused @entity(immutable: true) {
+#   id: Bytes!
+#   account: Bytes! # address
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type TokensClaimed @entity(immutable: true) {
+#   id: Bytes!
+#   beneficiary: Bytes! # address
+#   amount: BigInt! # uint256
+#   totalClaimed: BigInt! # uint256
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type CAPXVestingUnpaused @entity(immutable: true) {
+#   id: Bytes!
+#   account: Bytes! # address
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type VestingCreated @entity(immutable: true) {
+#   id: Bytes!
+#   beneficiary: Bytes! # address
+#   totalAllocation: BigInt! # uint256
+#   startTime: BigInt! # uint256
+#   cliffEnd: BigInt! # uint256
+#   vestingEnd: BigInt! # uint256
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+# type VestingRevoked @entity(immutable: true) {
+#   id: Bytes!
+#   beneficiary: Bytes! # address
+#   amountClaimed: BigInt! # uint256
+#   amountRevoked: BigInt! # uint256
+#   blockNumber: BigInt!
+#   blockTimestamp: BigInt!
+#   transactionHash: Bytes!
+# }
+
+
+
+
+
+
+
+############################
+# PROTOCOL (MASTER ENTITY)
+############################
+
+type Protocol @entity(immutable: false) {
+  id: ID! # "CAPX"
+  totalUsers: BigInt!
+  totalTransactions: BigInt!
+
+  # Staking & vesting (raw + normalized)
+  totalStakedRaw: BigInt!
+  totalStaked: BigDecimal!
+
+  totalVestedRaw: BigInt!
+  totalVested: BigDecimal!
+
+  # Cached invariant: totalTVL = totalStaked + totalVested
+  totalTVLRaw: BigInt!
+  totalTVL: BigDecimal!
+
+  # Rewards
+  totalRewardsDistributedRaw: BigInt!
+  totalRewardsDistributed: BigDecimal!
+
+  totalVestingAllocatedRaw: BigInt!
+  totalVestingAllocated: BigDecimal!
+
+  totalVestingClaimedRaw: BigInt!
+  totalVestingClaimed: BigDecimal!
+
+  # Supply
+  circulatingSupplyRaw: BigInt!
+  circulatingSupply: BigDecimal!
+
+  totalBurnedRaw: BigInt!
+  totalBurned: BigDecimal!
+
+  lastUpdateBlock: BigInt!
+  lastUpdateTimestamp: BigInt!
 }
 
-type DAOAddressUpdated @entity(immutable: true) {
-  id: Bytes!
-  oldAddress: Bytes! # address
-  newAddress: Bytes! # address
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
+############################
+# LOCK STATS (QUERY SEPARATELY)
+############################
+
+type LockStat @entity(immutable: false) {
+  id: ID! # "lock-0", "lock-1", ...
+  lockOption: Int! # 0=FLEX,1=30d,2=90d,3=180d
+  stakers: BigInt!
+  amountRaw: BigInt!
+  amount: BigDecimal!
 }
 
-type ExemptionUpdated @entity(immutable: true) {
-  id: Bytes!
-  account: Bytes! # address
-  isExempt: Boolean! # bool
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
+############################
+# TIME SERIES (WEEK / MONTH / YEAR)
+############################
+
+type WeeklyData @entity(immutable: false) {
+  id: ID! # weekIndex
+  timestamp: BigInt!
+
+  transferCount: BigInt!
+  transferVolumeRaw: BigInt!
+  transferVolume: BigDecimal!
+
+  stakingVolumeRaw: BigInt!
+  unstakingVolumeRaw: BigInt!
+
+  rewardsClaimedRaw: BigInt!
+  rewardsClaimed: BigDecimal!
+
+  newUsers: BigInt!
+  cumulativeUsers: BigInt!
+
+  tvlStartRaw: BigInt!
+  tvlEndRaw: BigInt!
+  tvlPeakRaw: BigInt!
+
+  totalTransactions: BigInt!
 }
 
-type Paused @entity(immutable: true) {
-  id: Bytes!
-  account: Bytes! # address
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
+type MonthlyData @entity(immutable: false) {
+  id: ID! # monthIndex
+  timestamp: BigInt!
+
+  transferCount: BigInt!
+  transferVolumeRaw: BigInt!
+  transferVolume: BigDecimal!
+
+  stakingVolumeRaw: BigInt!
+  unstakingVolumeRaw: BigInt!
+
+  rewardsClaimedRaw: BigInt!
+  rewardsClaimed: BigDecimal!
+
+  newUsers: BigInt!
+  cumulativeUsers: BigInt!
+
+  tvlStartRaw: BigInt!
+  tvlEndRaw: BigInt!
+  tvlPeakRaw: BigInt!
+
+  totalTransactions: BigInt!
 }
 
-type RevenueMint @entity(immutable: true) {
-  id: Bytes!
-  to: Bytes! # address
-  amount: BigInt! # uint256
-  revenue: BigInt! # uint256
-  marketValue: BigInt! # uint256
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
+type YearlyData @entity(immutable: false) {
+  id: ID! # yearIndex
+  timestamp: BigInt!
+
+  transferCount: BigInt!
+  transferVolumeRaw: BigInt!
+  transferVolume: BigDecimal!
+
+  stakingVolumeRaw: BigInt!
+  unstakingVolumeRaw: BigInt!
+
+  rewardsClaimedRaw: BigInt!
+  rewardsClaimed: BigDecimal!
+
+  newUsers: BigInt!
+  cumulativeUsers: BigInt!
+
+  tvlStartRaw: BigInt!
+  tvlEndRaw: BigInt!
+  tvlPeakRaw: BigInt!
+
+  totalTransactions: BigInt!
 }
 
-type RoleAdminChanged @entity(immutable: true) {
-  id: Bytes!
-  role: Bytes! # bytes32
-  previousAdminRole: Bytes! # bytes32
-  newAdminRole: Bytes! # bytes32
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
+############################
+# USERS
+############################
+
+type User @entity(immutable: false) {
+  id: ID! # address hex
+  address: Bytes!
+
+  firstSeenBlock: BigInt
+  firstSeenTimestamp: BigInt
+
+  txCount: BigInt!
+  lastActivityTimestamp: BigInt
+
+  hasActiveStake: Boolean!
+  totalStakedRaw: BigInt!
+  totalUnstakedRaw: BigInt!
+
+  totalRewardsClaimedRaw: BigInt!
+  totalRewardsClaimed: BigDecimal!
+
+  hasActiveVesting: Boolean!
+  totalVestingAllocatedRaw: BigInt!
+  totalVestingClaimedRaw: BigInt!
+
+  stakingPositions: [StakingPosition!]! @derivedFrom(field: "user")
+
+  vestingPositions: [VestingPosition!]! @derivedFrom(field: "user")
 }
 
-type RoleGranted @entity(immutable: true) {
-  id: Bytes!
-  role: Bytes! # bytes32
-  account: Bytes! # address
-  sender: Bytes! # address
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
+############################
+# STAKING
+############################
+
+type StakingPosition @entity(immutable: false) {
+  id: ID! # txHash-logIndex
+  user: User!
+  userAddress: Bytes!
+
+  amountRaw: BigInt!
+  amount: BigDecimal!
+
+  lockOption: Int!
+  unlockTime: BigInt
+
+  active: Boolean!
+
+  totalRewardsClaimedRaw: BigInt!
+  totalRewardsClaimed: BigDecimal!
+
+  stakedAt: BigInt!
+  stakedAtBlock: BigInt!
+  unstakedAt: BigInt
 }
 
-type RoleRevoked @entity(immutable: true) {
-  id: Bytes!
-  role: Bytes! # bytes32
-  account: Bytes! # address
-  sender: Bytes! # address
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
+############################
+# VESTING
+############################
+
+type VestingPosition @entity(immutable: false) {
+  id: ID! # txHash-logIndex
+  user: User
+  beneficiary: Bytes!
+
+  totalAllocatedRaw: BigInt!
+  totalClaimedRaw: BigInt!
+
+  startTime: BigInt!
+  cliffEnd: BigInt
+  endTime: BigInt!
+
+  revoked: Boolean!
+  active: Boolean!
+
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+  revokedAt: BigInt
 }
 
-type Transfer @entity(immutable: true) {
-  id: Bytes!
-  from: Bytes! # address
-  to: Bytes! # address
-  value: BigInt! # uint256
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
+############################
+# ROLES
+############################
+
+type RoleAccount @entity(immutable: false) {
+  id: ID! # role-account
+  role: String!
+  account: Bytes!
+
+  isActive: Boolean!
+  assignedAtBlock: BigInt!
+  assignedAtTimestamp: BigInt
+
+  revokedAtBlock: BigInt
+  revokedAtTimestamp: BigInt
 }
 
-type TreasuryAddressUpdated @entity(immutable: true) {
-  id: Bytes!
-  oldAddress: Bytes! # address
-  newAddress: Bytes! # address
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
-}
+############################
+# TRANSACTIONS (LEAN)
+############################
 
-type TreasuryFee @entity(immutable: true) {
-  id: Bytes!
-  from: Bytes! # address
-  to: Bytes! # address
-  amount: BigInt! # uint256
+type Transaction @entity(immutable: true) {
+  id: ID! # tx hash
   blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
-}
-
-type Unpaused @entity(immutable: true) {
-  id: Bytes!
-  account: Bytes! # address
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
+  timestamp: BigInt!
 }
