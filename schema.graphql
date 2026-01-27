@@ -5,47 +5,29 @@
 type Protocol @entity(immutable: false) {
   id: ID! # "CAPX"
   totalUsers: BigInt!
+  totalActiveStakers: BigInt!
+
   totalTransactions: BigInt!
 
   # Staking & vesting (raw + normalized)
   totalStakedRaw: BigInt!
-  totalStaked: BigDecimal!
-
   totalVestedRaw: BigInt!
-  totalVested: BigDecimal!
 
   # Cached invariant: totalTVL = totalStaked + totalVested
   totalTVLRaw: BigInt!
-  totalTVL: BigDecimal!
 
   # Rewards
   totalRewardsDistributedRaw: BigInt!
-  totalRewardsDistributed: BigDecimal!
-
-  totalVestingAllocatedRaw: BigInt!
-  totalVestingAllocated: BigDecimal!
-
   totalVestingClaimedRaw: BigInt!
-  totalVestingClaimed: BigDecimal!
 
   # Supply
   circulatingSupplyRaw: BigInt!
-  circulatingSupply: BigDecimal!
-
   totalBurnedRaw: BigInt!
-  totalBurned: BigDecimal!
 
   totalTreasuryFeeRaw: BigInt!
-  totalTreasuryFee: BigDecimal!
-
   totalTeamMintedRaw: BigInt!
-  totalTeamMinted: BigDecimal!
-
   totalTreasuryMintedRaw: BigInt!
-  totalTreasuryMinted: BigDecimal!
-
   totalDAOmintedRaw: BigInt!
-  totalDAOminted: BigDecimal!
 
   lastUpdateBlock: BigInt!
   lastUpdateTimestamp: BigInt!
@@ -61,10 +43,8 @@ type LockStat @entity(immutable: false) {
   activePositions: BigInt!
 
   totalLockedRaw: BigInt!
-  totalLocked: BigDecimal!
 
   totalRewardsDistributedRaw: BigInt!
-  totalRewardsDistributed: BigDecimal!
 }
 
 ############################
@@ -73,74 +53,74 @@ type LockStat @entity(immutable: false) {
 
 type WeeklyData @entity(immutable: false) {
   id: ID! # weekIndex
-  timestamp: BigInt!
-
+  timestamp: BigInt! # week start timestamp
+  # Activity
+  totalTransactions: BigInt!
   transferCount: BigInt!
+
+  # Volume
   transferVolumeRaw: BigInt!
-  transferVolume: BigDecimal!
 
   stakingVolumeRaw: BigInt!
   unstakingVolumeRaw: BigInt!
+  netStakingFlowRaw: BigInt!
 
-  rewardsClaimedRaw: BigInt!
-  rewardsClaimed: BigDecimal!
+  # Rewards
+  rewardsDistributedRaw: BigInt!
 
+  # Users
   newUsers: BigInt!
   cumulativeUsers: BigInt!
+  activeStakersCount: BigInt!
 
+  # TVL
   tvlStartRaw: BigInt!
   tvlEndRaw: BigInt!
   tvlPeakRaw: BigInt!
-
-  totalTransactions: BigInt!
 }
 
 type MonthlyData @entity(immutable: false) {
   id: ID! # monthIndex
-  timestamp: BigInt!
-
+  timestamp: BigInt! # month start
+  totalTransactions: BigInt!
   transferCount: BigInt!
   transferVolumeRaw: BigInt!
-  transferVolume: BigDecimal!
 
   stakingVolumeRaw: BigInt!
   unstakingVolumeRaw: BigInt!
+  netStakingFlowRaw: BigInt!
 
-  rewardsClaimedRaw: BigInt!
-  rewardsClaimed: BigDecimal!
+  rewardsDistributedRaw: BigInt!
 
   newUsers: BigInt!
   cumulativeUsers: BigInt!
+  activeStakersCount: BigInt!
 
   tvlStartRaw: BigInt!
   tvlEndRaw: BigInt!
   tvlPeakRaw: BigInt!
-
-  totalTransactions: BigInt!
 }
 
 type YearlyData @entity(immutable: false) {
   id: ID! # yearIndex
-  timestamp: BigInt!
-
+  timestamp: BigInt! # year start
+  totalTransactions: BigInt!
   transferCount: BigInt!
   transferVolumeRaw: BigInt!
-  transferVolume: BigDecimal!
 
   stakingVolumeRaw: BigInt!
   unstakingVolumeRaw: BigInt!
+  netStakingFlowRaw: BigInt!
 
-  rewardsClaimedRaw: BigInt!
-  rewardsClaimed: BigDecimal!
+  rewardsDistributedRaw: BigInt!
 
   newUsers: BigInt!
   cumulativeUsers: BigInt!
+  activeStakersCount: BigInt!
 
   tvlStartRaw: BigInt!
   tvlEndRaw: BigInt!
   tvlPeakRaw: BigInt!
-
-  totalTransactions: BigInt!
 }
 
 ############################
@@ -162,7 +142,6 @@ type User @entity(immutable: false) {
   totalUnstakedRaw: BigInt!
 
   totalRewardsClaimedRaw: BigInt!
-  totalRewardsClaimed: BigDecimal!
 
   hasActiveVesting: Boolean!
   totalVestingAllocatedRaw: BigInt!
@@ -183,7 +162,6 @@ type StakingPosition @entity(immutable: false) {
   userAddress: Bytes!
 
   amountRaw: BigInt!
-  amount: BigDecimal!
 
   lockOption: Int!
   unlockTime: BigInt
@@ -191,7 +169,6 @@ type StakingPosition @entity(immutable: false) {
   active: Boolean!
 
   totalRewardsClaimedRaw: BigInt!
-  totalRewardsClaimed: BigDecimal!
 
   stakedAt: BigInt!
   stakedAtBlock: BigInt!

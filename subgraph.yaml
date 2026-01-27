@@ -21,22 +21,9 @@ dataSources:
         - User
         - RoleAccount
         - Transaction
-        - TransferEvent
-        - RevenueMintEvent
-        - TreasuryFeeEvent
-        - MintEvent
-        - BurnEvent
-        - DailyData
         - WeeklyData
         - MonthlyData
         - YearlyData
-        - DailyUserActivity
-        - StakingEvent
-        - VestingEvent
-        - StakingPosition
-        - VestingPosition
-        - StakingStats
-        - VestingStats
       abis:
         - name: CAPX
           file: ./abis/CAPX.json
@@ -55,6 +42,12 @@ dataSources:
           handler: handleMint
         - event: Burn(indexed address,uint256)
           handler: handleBurn
+        - event: TreasuryAddressUpdated(indexed address,indexed address)
+          handler: handleTreasuryAddressUpdated
+        - event: DaoAddressUpdated(indexed address,indexed address)
+          handler: handleDaoAddressUpdated
+        - event: ExemptionUpdated(indexed address,bool)
+          handler: handleExemptionUpdated
 
   - kind: ethereum
     name: CAPXVesting
@@ -72,23 +65,19 @@ dataSources:
         - Protocol
         - User
         - VestingPosition
-        - VestingStats
-        - VestingEvent
-        - DailyData
         - WeeklyData
         - MonthlyData
         - YearlyData
-        - DailyUserActivity
       abis:
         - name: CAPXVesting
           file: ./abis/CAPXVesting.json
       eventHandlers:
-         - event: VestingCreated(indexed address,uint256,uint256,uint256,uint256)
-           handler: handleVestingCreated
-         - event: TokensClaimed(indexed address,uint256,uint256)
-           handler: handleTokensClaimed
-         - event: VestingRevoked(indexed address,uint256,uint256)
-           handler: handleVestingRevoked
+        - event: VestingCreated(indexed address,uint256,uint256,uint256,uint256)
+          handler: handleVestingCreated
+        - event: TokensClaimed(indexed address,uint256,uint256)
+          handler: handleTokensClaimed
+        - event: VestingRevoked(indexed address,uint256,uint256)
+          handler: handleVestingRevoked
 
   - kind: ethereum
     name: CAPXStaking
@@ -106,13 +95,10 @@ dataSources:
         - Protocol
         - User
         - StakingPosition
-        - StakingStats
-        - StakingEvent
-        - DailyData
+        - LockStat
         - WeeklyData
         - MonthlyData
         - YearlyData
-        - DailyUserActivity
       abis:
         - name: CAPXStaking
           file: ./abis/CAPXStaking.json
@@ -127,3 +113,11 @@ dataSources:
           handler: handleCompounded
         - event: RewardsDeposited(indexed address,uint256)
           handler: handleRewardsDeposited
+        - event: BaseAprUpdated(uint256,uint256)
+          handler: handleBaseAprUpdated
+        - event: MinStakeAmountUpdated(uint256,uint256)
+          handler: handleMinStakeAmountUpdated
+        - event: LockMultiplierUpdated(indexed uint8,uint256,uint256)
+          handler: handleLockMultiplierUpdated
+        - event: TokenRecovered(indexed address,indexed address,uint256)
+          handler: handleTokenRecovered

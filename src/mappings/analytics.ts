@@ -6,6 +6,9 @@ import {
   TreasuryFee,
   Mint,
   Burn,
+  TreasuryAddressUpdated,
+  DaoAddressUpdated,
+  ExemptionUpdated,
 } from "../../generated/CAPX/CAPX";
 
 import {
@@ -20,6 +23,10 @@ import {
   RewardClaimed,
   RewardsDeposited,
   Compounded,
+  BaseAprUpdated,
+  MinStakeAmountUpdated,
+  LockMultiplierUpdated,
+  TokenRecovered,
 } from "../../generated/CAPXStaking/CAPXStaking";
 
 import {
@@ -35,7 +42,7 @@ import {
   LockStat,
 } from "../../generated/schema";
 
-import { Address, BigInt, BigDecimal, ethereum } from "@graphprotocol/graph-ts";
+import { Address, BigInt, ethereum } from "@graphprotocol/graph-ts";
 
 /* ======================================================
    CONSTANTS
@@ -44,16 +51,10 @@ import { Address, BigInt, BigDecimal, ethereum } from "@graphprotocol/graph-ts";
 const PROTOCOL_ID = "CAPX";
 const ZERO = BigInt.zero();
 const ONE = BigInt.fromI32(1);
-const DECIMALS = BigInt.fromI32(10).pow(18);
 
 /* ======================================================
    TIME HELPERS
 ====================================================== */
-
-function updateTVL(p: Protocol): void {
-  p.totalTVLRaw = p.totalStakedRaw.plus(p.totalVestedRaw);
-  p.totalTVL = toDecimal(p.totalTVLRaw);
-}
 
 function weekId(ts: BigInt): string {
   return (ts.toI64() / 604800).toString();
@@ -65,10 +66,6 @@ function monthId(ts: BigInt): string {
 
 function yearId(ts: BigInt): string {
   return (ts.toI64() / 31536000).toString();
-}
-
-function toDecimal(value: BigInt): BigDecimal {
-  return value.toBigDecimal().div(DECIMALS.toBigDecimal());
 }
 
 function decodeRoles(roleBitmap: BigInt): string[] {
@@ -87,79 +84,47 @@ function decodeRoles(roleBitmap: BigInt): string[] {
   return roles;
 }
 
-function getOrCreateLockStat(lockOption: i32): LockStat {
-  let id = "lock-" + lockOption.toString();
-  let l = LockStat.load(id);
-
-  if (l == null) {
-    l = new LockStat(id);
-    l.lockOption = lockOption;
-    l.totalLockedRaw = ZERO;
-    l.totalLocked = BigDecimal.zero();
-    l.activePositions = ZERO;
-    l.totalRewardsDistributedRaw = ZERO;
-    l.totalRewardsDistributed = BigDecimal.zero();
-    l.save();
-  }
-
-  return l;
-}
-
 /* ======================================================
    PROTOCOL
 ====================================================== */
 
-function getProtocol(block: BigInt, ts: BigInt): Protocol {
-  let p = Protocol.load("CAPX");
+function getProtocol(event: ethereum.Event): Protocol {
+  let p = Protocol.load(PROTOCOL_ID);
 
   if (p == null) {
-    p = new Protocol("CAPX");
+    p = new Protocol(PROTOCOL_ID);
 
     p.totalUsers = ZERO;
+    p.totalActiveStakers = ZERO;
+
     p.totalTransactions = ZERO;
 
     p.totalStakedRaw = ZERO;
-    p.totalStaked = BigDecimal.zero();
-
     p.totalVestedRaw = ZERO;
-    p.totalVested = BigDecimal.zero();
-
     p.totalTVLRaw = ZERO;
-    p.totalTVL = BigDecimal.zero();
 
     p.totalRewardsDistributedRaw = ZERO;
-    p.totalRewardsDistributed = BigDecimal.zero();
-
-    p.totalVestingAllocatedRaw = ZERO;
-    p.totalVestingAllocated = BigDecimal.zero();
-
     p.totalVestingClaimedRaw = ZERO;
-    p.totalVestingClaimed = BigDecimal.zero();
 
     p.circulatingSupplyRaw = ZERO;
-    p.circulatingSupply = BigDecimal.zero();
-
     p.totalBurnedRaw = ZERO;
-    p.totalBurned = BigDecimal.zero();
-
     p.totalTreasuryFeeRaw = ZERO;
-    p.totalTreasuryFee = BigDecimal.zero();
 
     p.totalTeamMintedRaw = ZERO;
-    p.totalTeamMinted = BigDecimal.zero();
-
     p.totalTreasuryMintedRaw = ZERO;
-    p.totalTreasuryMinted = BigDecimal.zero();
-
     p.totalDAOmintedRaw = ZERO;
-    p.totalDAOminted = BigDecimal.zero();
 
-    p.lastUpdateBlock = block;
-    p.lastUpdateTimestamp = ts;
+    p.lastUpdateBlock = event.block.number;
+    p.lastUpdateTimestamp = event.block.timestamp;
+
     p.save();
   }
 
   return p;
+}
+
+function updateTVL(p: Protocol): void {
+  p.totalTVLRaw = p.totalStakedRaw.plus(p.totalVestedRaw);
 }
 
 /* ======================================================
@@ -185,93 +150,163 @@ function getOrCreateUser(addr: Address, event: ethereum.Event): User {
 
     u.totalStakedRaw = ZERO;
     u.totalUnstakedRaw = ZERO;
-
     u.totalRewardsClaimedRaw = ZERO;
-    u.totalRewardsClaimed = BigDecimal.zero();
 
     u.totalVestingAllocatedRaw = ZERO;
     u.totalVestingClaimedRaw = ZERO;
 
     u.save();
 
-    let p = getProtocol(event.block.number, event.block.timestamp);
+    let p = getProtocol(event);
     p.totalUsers = p.totalUsers.plus(ONE);
     p.save();
+
+    let w = getOrCreateWeeklyData(
+      weekId(event.block.timestamp),
+      event.block.timestamp,
+    );
+    let m = getOrCreateMonthlyData(
+      monthId(event.block.timestamp),
+      event.block.timestamp,
+    );
+    let y = getOrCreateYearlyData(
+      yearId(event.block.timestamp),
+      event.block.timestamp,
+    );
+
+    w.newUsers = w.newUsers.plus(ONE);
+    m.newUsers = m.newUsers.plus(ONE);
+    y.newUsers = y.newUsers.plus(ONE);
+
+    syncTimeSeriesSnapshots(event, w, m, y);
   }
 
   return u;
 }
 
 /* ======================================================
-   TIME SERIES (GENERIC)
+   LOCK STATS
 ====================================================== */
 
-function updateTimeSeries(
-  event: ethereum.Event,
-  onUpdate: (w: WeeklyData, m: MonthlyData, y: YearlyData) => void,
-): void {
-  let week = weekId(event.block.timestamp);
-  let month = monthId(event.block.timestamp);
-  let year = yearId(event.block.timestamp);
+function getOrCreateLockStat(lockOption: i32): LockStat {
+  let id = "lock-" + lockOption.toString();
+  let l = LockStat.load(id);
 
-  let w = WeeklyData.load(week);
+  if (l == null) {
+    l = new LockStat(id);
+    l.lockOption = lockOption;
+    l.totalLockedRaw = ZERO;
+    l.activePositions = ZERO;
+    l.totalRewardsDistributedRaw = ZERO;
+    l.save();
+  }
+
+  return l;
+}
+
+/* ======================================================
+   TIME SERIES helpers (no closures)
+====================================================== */
+
+function getOrCreateWeeklyData(id: string, ts: BigInt): WeeklyData {
+  let w = WeeklyData.load(id);
   if (w == null) {
-    w = new WeeklyData(week);
-    w.timestamp = event.block.timestamp;
+    w = new WeeklyData(id);
+    w.timestamp = ts;
+    w.totalTransactions = ZERO;
     w.transferCount = ZERO;
     w.transferVolumeRaw = ZERO;
-    w.transferVolume = BigDecimal.zero();
     w.stakingVolumeRaw = ZERO;
     w.unstakingVolumeRaw = ZERO;
-    w.rewardsClaimedRaw = ZERO;
-    w.rewardsClaimed = BigDecimal.zero();
+    w.netStakingFlowRaw = ZERO;
+    w.rewardsDistributedRaw = ZERO;
     w.newUsers = ZERO;
     w.cumulativeUsers = ZERO;
+    w.activeStakersCount = ZERO;
     w.tvlStartRaw = ZERO;
     w.tvlEndRaw = ZERO;
     w.tvlPeakRaw = ZERO;
-    w.totalTransactions = ZERO;
   }
+  return w;
+}
 
-  let m = MonthlyData.load(month);
+function getOrCreateMonthlyData(id: string, ts: BigInt): MonthlyData {
+  let m = MonthlyData.load(id);
   if (m == null) {
-    m = new MonthlyData(month);
-    m.timestamp = event.block.timestamp;
+    m = new MonthlyData(id);
+    m.timestamp = ts;
+    m.totalTransactions = ZERO;
     m.transferCount = ZERO;
     m.transferVolumeRaw = ZERO;
-    m.transferVolume = BigDecimal.zero();
     m.stakingVolumeRaw = ZERO;
     m.unstakingVolumeRaw = ZERO;
-    m.rewardsClaimedRaw = ZERO;
-    m.rewardsClaimed = BigDecimal.zero();
+    m.netStakingFlowRaw = ZERO;
+    m.rewardsDistributedRaw = ZERO;
     m.newUsers = ZERO;
     m.cumulativeUsers = ZERO;
+    m.activeStakersCount = ZERO;
     m.tvlStartRaw = ZERO;
     m.tvlEndRaw = ZERO;
     m.tvlPeakRaw = ZERO;
-    m.totalTransactions = ZERO;
   }
+  return m;
+}
 
-  let y = YearlyData.load(year);
+function getOrCreateYearlyData(id: string, ts: BigInt): YearlyData {
+  let y = YearlyData.load(id);
   if (y == null) {
-    y = new YearlyData(year);
-    y.timestamp = event.block.timestamp;
+    y = new YearlyData(id);
+    y.timestamp = ts;
+    y.totalTransactions = ZERO;
     y.transferCount = ZERO;
     y.transferVolumeRaw = ZERO;
-    y.transferVolume = BigDecimal.zero();
     y.stakingVolumeRaw = ZERO;
     y.unstakingVolumeRaw = ZERO;
-    y.rewardsClaimedRaw = ZERO;
-    y.rewardsClaimed = BigDecimal.zero();
+    y.netStakingFlowRaw = ZERO;
+    y.rewardsDistributedRaw = ZERO;
     y.newUsers = ZERO;
     y.cumulativeUsers = ZERO;
+    y.activeStakersCount = ZERO;
     y.tvlStartRaw = ZERO;
     y.tvlEndRaw = ZERO;
     y.tvlPeakRaw = ZERO;
-    y.totalTransactions = ZERO;
+  }
+  return y;
+}
+
+function syncTimeSeriesSnapshots(
+  event: ethereum.Event,
+  w: WeeklyData,
+  m: MonthlyData,
+  y: YearlyData,
+): void {
+  let p = getProtocol(event);
+
+  if (w.tvlStartRaw.equals(ZERO)) {
+    w.tvlStartRaw = p.totalTVLRaw;
+  }
+  if (m.tvlStartRaw.equals(ZERO)) {
+    m.tvlStartRaw = p.totalTVLRaw;
+  }
+  if (y.tvlStartRaw.equals(ZERO)) {
+    y.tvlStartRaw = p.totalTVLRaw;
   }
 
-  onUpdate(w, m, y);
+  w.cumulativeUsers = p.totalUsers;
+  m.cumulativeUsers = p.totalUsers;
+  y.cumulativeUsers = p.totalUsers;
+
+  w.activeStakersCount = p.totalActiveStakers;
+  m.activeStakersCount = p.totalActiveStakers;
+  y.activeStakersCount = p.totalActiveStakers;
+
+  w.tvlEndRaw = p.totalTVLRaw;
+  m.tvlEndRaw = p.totalTVLRaw;
+  y.tvlEndRaw = p.totalTVLRaw;
+
+  w.tvlPeakRaw = w.tvlPeakRaw.gt(p.totalTVLRaw) ? w.tvlPeakRaw : p.totalTVLRaw;
+  m.tvlPeakRaw = m.tvlPeakRaw.gt(p.totalTVLRaw) ? m.tvlPeakRaw : p.totalTVLRaw;
+  y.tvlPeakRaw = y.tvlPeakRaw.gt(p.totalTVLRaw) ? y.tvlPeakRaw : p.totalTVLRaw;
 
   w.save();
   m.save();
@@ -279,119 +314,42 @@ function updateTimeSeries(
 }
 
 /* ======================================================
-   TRANSACTION TRACKING
+   TRANSACTIONS
 ====================================================== */
 
 function trackTx(event: ethereum.Event): void {
-  let txId = event.transaction.hash.toHex();
-  if (Transaction.load(txId) == null) {
-    let tx = new Transaction(txId);
+  let id = event.transaction.hash.toHex();
+  if (Transaction.load(id) == null) {
+    let tx = new Transaction(id);
     tx.blockNumber = event.block.number;
     tx.timestamp = event.block.timestamp;
     tx.save();
 
-    let p = getProtocol(event.block.number, event.block.timestamp);
+    let p = getProtocol(event);
     p.totalTransactions = p.totalTransactions.plus(ONE);
     p.lastUpdateBlock = event.block.number;
     p.lastUpdateTimestamp = event.block.timestamp;
     p.save();
 
-    updateTimeSeries(event, (w, m, y) => {
-      w.totalTransactions = w.totalTransactions.plus(ONE);
-      m.totalTransactions = m.totalTransactions.plus(ONE);
-      y.totalTransactions = y.totalTransactions.plus(ONE);
-    });
-  }
-}
-
-/* ======================================================
-   TRANSFER (SINGLE SOURCE OF SUPPLY TRUTH)
-====================================================== */
-
-export function handleTransfer(event: Transfer): void {
-  trackTx(event);
-
-  let amount = event.params.amount;
-
-  if (event.params.from != Address.zero()) {
-    let from = getOrCreateUser(event.params.from, event);
-    from.txCount = from.txCount.plus(ONE);
-    from.lastActivityTimestamp = event.block.timestamp;
-    from.save();
-  }
-
-  if (event.params.to != Address.zero()) {
-    let to = getOrCreateUser(event.params.to, event);
-    to.txCount = to.txCount.plus(ONE);
-    to.lastActivityTimestamp = event.block.timestamp;
-    to.save();
-  }
-
-  updateTimeSeries(event, (w, m, y) => {
-    w.transferCount = w.transferCount.plus(ONE);
-    w.transferVolumeRaw = w.transferVolumeRaw.plus(amount);
-    w.transferVolume = toDecimal(w.transferVolumeRaw);
-
-    m.transferCount = m.transferCount.plus(ONE);
-    m.transferVolumeRaw = m.transferVolumeRaw.plus(amount);
-    m.transferVolume = toDecimal(m.transferVolumeRaw);
-
-    y.transferCount = y.transferCount.plus(ONE);
-    y.transferVolumeRaw = y.transferVolumeRaw.plus(amount);
-    y.transferVolume = toDecimal(y.transferVolumeRaw);
-  });
-}
-
-export function handleMint(event: Mint): void {
-  let p = getProtocol(event.block.number, event.block.timestamp);
-
-  // circulating supply
-  p.circulatingSupplyRaw = p.circulatingSupplyRaw.plus(event.params.amount);
-  p.circulatingSupply = toDecimal(p.circulatingSupplyRaw);
-
-  let role = event.params.role;
-
-  // Solady bitmap roles
-  if (role.equals(BigInt.fromI32(1))) {
-    p.totalTeamMintedRaw = p.totalTeamMintedRaw.plus(event.params.amount);
-    p.totalTeamMinted = toDecimal(p.totalTeamMintedRaw);
-  } else if (role.equals(BigInt.fromI32(2))) {
-    p.totalTreasuryMintedRaw = p.totalTreasuryMintedRaw.plus(
-      event.params.amount,
+    let w = getOrCreateWeeklyData(
+      weekId(event.block.timestamp),
+      event.block.timestamp,
     );
-    p.totalTreasuryMinted = toDecimal(p.totalTreasuryMintedRaw);
-  } else if (role.equals(BigInt.fromI32(4))) {
-    p.totalDAOmintedRaw = p.totalDAOmintedRaw.plus(event.params.amount);
-    p.totalDAOminted = toDecimal(p.totalDAOmintedRaw);
+    let m = getOrCreateMonthlyData(
+      monthId(event.block.timestamp),
+      event.block.timestamp,
+    );
+    let y = getOrCreateYearlyData(
+      yearId(event.block.timestamp),
+      event.block.timestamp,
+    );
+
+    w.totalTransactions = w.totalTransactions.plus(ONE);
+    m.totalTransactions = m.totalTransactions.plus(ONE);
+    y.totalTransactions = y.totalTransactions.plus(ONE);
+
+    syncTimeSeriesSnapshots(event, w, m, y);
   }
-
-  p.totalTransactions = p.totalTransactions.plus(ONE);
-  p.lastUpdateBlock = event.block.number;
-  p.lastUpdateTimestamp = event.block.timestamp;
-  p.save();
-}
-
-export function handleBurn(event: Burn): void {
-  trackTx(event);
-
-  let p = getProtocol(event.block.number, event.block.timestamp);
-
-  p.totalBurnedRaw = p.totalBurnedRaw.plus(event.params.amount);
-  p.totalBurned = toDecimal(p.totalBurnedRaw);
-
-  p.circulatingSupplyRaw = p.circulatingSupplyRaw.minus(event.params.amount);
-  p.circulatingSupply = toDecimal(p.circulatingSupplyRaw);
-
-  p.save();
-}
-
-export function handleTreasuryFee(event: TreasuryFee): void {
-  trackTx(event);
-
-  let p = getProtocol(event.block.number, event.block.timestamp);
-  p.totalTreasuryFeeRaw = p.totalTreasuryFeeRaw.plus(event.params.amount);
-  p.totalTreasuryFee = toDecimal(p.totalTreasuryFeeRaw);
-  p.save();
 }
 
 /* ======================================================
@@ -399,6 +357,8 @@ export function handleTreasuryFee(event: TreasuryFee): void {
 ====================================================== */
 
 export function handleRoleGranted(event: RoleGranted): void {
+  trackTx(event);
+
   let roles = decodeRoles(event.params.role);
 
   for (let i = 0; i < roles.length; i++) {
@@ -422,6 +382,8 @@ export function handleRoleGranted(event: RoleGranted): void {
 }
 
 export function handleRoleRevoked(event: RoleRevoked): void {
+  trackTx(event);
+
   let roles = decodeRoles(event.params.role);
 
   for (let i = 0; i < roles.length; i++) {
@@ -439,16 +401,105 @@ export function handleRoleRevoked(event: RoleRevoked): void {
 }
 
 /* ======================================================
-   VESTING
+   TRANSFER
+====================================================== */
+
+export function handleTransfer(event: Transfer): void {
+  trackTx(event);
+
+  if (event.params.from != Address.zero()) {
+    let from = getOrCreateUser(event.params.from, event);
+    from.txCount = from.txCount.plus(ONE);
+    from.lastActivityTimestamp = event.block.timestamp;
+    from.save();
+  }
+
+  if (event.params.to != Address.zero()) {
+    let to = getOrCreateUser(event.params.to, event);
+    to.txCount = to.txCount.plus(ONE);
+    to.lastActivityTimestamp = event.block.timestamp;
+    to.save();
+  }
+
+  let w = getOrCreateWeeklyData(
+    weekId(event.block.timestamp),
+    event.block.timestamp,
+  );
+  let m = getOrCreateMonthlyData(
+    monthId(event.block.timestamp),
+    event.block.timestamp,
+  );
+  let y = getOrCreateYearlyData(
+    yearId(event.block.timestamp),
+    event.block.timestamp,
+  );
+
+  w.transferCount = w.transferCount.plus(ONE);
+  w.transferVolumeRaw = w.transferVolumeRaw.plus(event.params.amount);
+
+  m.transferCount = m.transferCount.plus(ONE);
+  m.transferVolumeRaw = m.transferVolumeRaw.plus(event.params.amount);
+
+  y.transferCount = y.transferCount.plus(ONE);
+  y.transferVolumeRaw = y.transferVolumeRaw.plus(event.params.amount);
+
+  syncTimeSeriesSnapshots(event, w, m, y);
+}
+
+/* ======================================================
+   MINT / BURN / TREASURY FEE
+====================================================== */
+
+export function handleMint(event: Mint): void {
+  trackTx(event);
+
+  let p = getProtocol(event);
+  p.circulatingSupplyRaw = p.circulatingSupplyRaw.plus(event.params.amount);
+
+  if (event.params.role.equals(BigInt.fromI32(1))) {
+    p.totalTeamMintedRaw = p.totalTeamMintedRaw.plus(event.params.amount);
+  } else if (event.params.role.equals(BigInt.fromI32(2))) {
+    p.totalTreasuryMintedRaw = p.totalTreasuryMintedRaw.plus(
+      event.params.amount,
+    );
+  } else if (event.params.role.equals(BigInt.fromI32(4))) {
+    p.totalDAOmintedRaw = p.totalDAOmintedRaw.plus(event.params.amount);
+  }
+
+  p.save();
+}
+
+export function handleBurn(event: Burn): void {
+  trackTx(event);
+
+  let p = getProtocol(event);
+  p.totalBurnedRaw = p.totalBurnedRaw.plus(event.params.amount);
+  p.circulatingSupplyRaw = p.circulatingSupplyRaw.minus(event.params.amount);
+  p.save();
+}
+
+export function handleTreasuryFee(event: TreasuryFee): void {
+  trackTx(event);
+
+  let p = getProtocol(event);
+  p.totalTreasuryFeeRaw = p.totalTreasuryFeeRaw.plus(event.params.amount);
+  p.save();
+}
+
+/* ======================================================
+   VESTING 
 ====================================================== */
 
 export function handleVestingCreated(event: VestingCreated): void {
   trackTx(event);
 
+  let p = getProtocol(event);
   let user = getOrCreateUser(event.params.beneficiary, event);
 
-  let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
-  let v = new VestingPosition(id);
+  let vestingId =
+    event.transaction.hash.toHex() + "-" + event.logIndex.toString();
+
+  let v = new VestingPosition(vestingId);
 
   v.user = user.id;
   v.beneficiary = event.params.beneficiary;
@@ -464,13 +515,8 @@ export function handleVestingCreated(event: VestingCreated): void {
   v.revokedAt = null;
   v.save();
 
-  let p = getProtocol(event.block.number, event.block.timestamp);
-  p.totalVestingAllocatedRaw = p.totalVestingAllocatedRaw.plus(
-    event.params.totalAllocation,
-  );
-  p.totalVestingAllocated = toDecimal(p.totalVestingAllocatedRaw);
   p.totalVestedRaw = p.totalVestedRaw.plus(event.params.totalAllocation);
-  p.totalVested = toDecimal(p.totalVestedRaw);
+
   updateTVL(p);
   p.save();
 
@@ -478,24 +524,27 @@ export function handleVestingCreated(event: VestingCreated): void {
   user.totalVestingAllocatedRaw = user.totalVestingAllocatedRaw.plus(
     event.params.totalAllocation,
   );
+  user.lastActivityTimestamp = event.block.timestamp;
   user.save();
 }
 
 export function handleTokensClaimed(event: TokensClaimed): void {
   trackTx(event);
 
-  let p = getProtocol(event.block.number, event.block.timestamp);
-  p.totalVestingClaimedRaw = p.totalVestingClaimedRaw.plus(event.params.amount);
-  p.totalVestingClaimed = toDecimal(p.totalVestingClaimedRaw);
-  p.totalVestedRaw = p.totalVestedRaw.minus(event.params.amount);
-  p.totalVested = toDecimal(p.totalVestedRaw);
+  let p = getProtocol(event);
+  let user = getOrCreateUser(event.params.beneficiary, event);
+
+  let claimed = event.params.amount;
+
+  p.totalVestingClaimedRaw = p.totalVestingClaimedRaw.plus(claimed);
+
+  p.totalVestedRaw = p.totalVestedRaw.minus(claimed);
+
   updateTVL(p);
   p.save();
 
-  let user = getOrCreateUser(event.params.beneficiary, event);
-  user.totalVestingClaimedRaw = user.totalVestingClaimedRaw.plus(
-    event.params.amount,
-  );
+  user.totalVestingClaimedRaw = user.totalVestingClaimedRaw.plus(claimed);
+  user.lastActivityTimestamp = event.block.timestamp;
   user.save();
 }
 
@@ -503,7 +552,31 @@ export function handleVestingRevoked(event: VestingRevoked): void {
   trackTx(event);
 
   let user = getOrCreateUser(event.params.beneficiary, event);
+
+  // Load all vesting positions for this user and mark active ones as revoked
+  let positions = user.vestingPositions.load();
+
+  for (let i = 0; i < positions.length; i++) {
+    if (positions[i].active) {
+      let v = positions[i];
+      v.revoked = true;
+      v.active = false;
+      v.revokedAt = event.block.timestamp;
+      v.save();
+
+      // Update TVL by removing unvested amount
+      let p = getProtocol(event);
+      let remaining = v.totalAllocatedRaw.minus(v.totalClaimedRaw);
+      p.totalVestedRaw = p.totalVestedRaw.minus(remaining);
+      updateTVL(p);
+      p.save();
+
+      break; // Only revoke the first active position
+    }
+  }
+
   user.hasActiveVesting = false;
+  user.lastActivityTimestamp = event.block.timestamp;
   user.save();
 }
 
@@ -514,98 +587,218 @@ export function handleVestingRevoked(event: VestingRevoked): void {
 export function handleStaked(event: Staked): void {
   trackTx(event);
 
-  let user = getOrCreateUser(event.params.user, event);
-  let lock = getOrCreateLockStat(event.params.lockOption);
+  let u = getOrCreateUser(event.params.user, event);
+  let l = getOrCreateLockStat(event.params.lockOption);
 
   let id = event.transaction.hash.toHex() + "-" + event.logIndex.toString();
   let s = new StakingPosition(id);
 
-  s.user = user.id;
+  s.user = u.id;
   s.userAddress = event.params.user;
   s.amountRaw = event.params.amount;
-  s.amount = toDecimal(event.params.amount);
   s.lockOption = event.params.lockOption;
   s.unlockTime = event.params.unlockTime;
   s.active = true;
   s.totalRewardsClaimedRaw = ZERO;
-  s.totalRewardsClaimed = BigDecimal.zero();
   s.stakedAt = event.block.timestamp;
   s.stakedAtBlock = event.block.number;
   s.unstakedAt = null;
   s.save();
 
-  let p = getProtocol(event.block.number, event.block.timestamp);
+  let p = getProtocol(event);
+
+  if (!u.hasActiveStake) {
+    p.totalActiveStakers = p.totalActiveStakers.plus(ONE);
+  }
+
   p.totalStakedRaw = p.totalStakedRaw.plus(event.params.amount);
-  p.totalStaked = toDecimal(p.totalStakedRaw);
   updateTVL(p);
   p.save();
 
-  lock.totalLockedRaw = lock.totalLockedRaw.plus(event.params.amount);
-  lock.totalLocked = toDecimal(lock.totalLockedRaw);
-  lock.activePositions = lock.activePositions.plus(ONE);
-  lock.save();
+  l.totalLockedRaw = l.totalLockedRaw.plus(event.params.amount);
+  l.activePositions = l.activePositions.plus(ONE);
+  l.save();
 
-  user.hasActiveStake = true;
-  user.totalStakedRaw = user.totalStakedRaw.plus(event.params.amount);
-  user.save();
+  u.hasActiveStake = true;
+  u.totalStakedRaw = u.totalStakedRaw.plus(event.params.amount);
+  u.save();
+
+  let w = getOrCreateWeeklyData(
+    weekId(event.block.timestamp),
+    event.block.timestamp,
+  );
+  let m = getOrCreateMonthlyData(
+    monthId(event.block.timestamp),
+    event.block.timestamp,
+  );
+  let y = getOrCreateYearlyData(
+    yearId(event.block.timestamp),
+    event.block.timestamp,
+  );
+
+  w.stakingVolumeRaw = w.stakingVolumeRaw.plus(event.params.amount);
+  w.netStakingFlowRaw = w.netStakingFlowRaw.plus(event.params.amount);
+
+  m.stakingVolumeRaw = m.stakingVolumeRaw.plus(event.params.amount);
+  m.netStakingFlowRaw = m.netStakingFlowRaw.plus(event.params.amount);
+
+  y.stakingVolumeRaw = y.stakingVolumeRaw.plus(event.params.amount);
+  y.netStakingFlowRaw = y.netStakingFlowRaw.plus(event.params.amount);
+
+  if (!u.hasActiveStake) {
+    w.activeStakersCount = w.activeStakersCount.plus(ONE);
+    m.activeStakersCount = m.activeStakersCount.plus(ONE);
+    y.activeStakersCount = y.activeStakersCount.plus(ONE);
+  }
+
+  syncTimeSeriesSnapshots(event, w, m, y);
 }
 
 export function handleUnstaked(event: Unstaked): void {
   trackTx(event);
 
-  // let lock = getOrCreateLockStat(event.params.lockOption);
-  // lock.totalLockedRaw = lock.totalLockedRaw.minus(event.params.amount);
-  // lock.totalLocked = toDecimal(lock.totalLockedRaw);
-  // lock.activePositions = lock.activePositions.minus(ONE);
-  // lock.save();
-
-  let p = getProtocol(event.block.number, event.block.timestamp);
+  let p = getProtocol(event);
   p.totalStakedRaw = p.totalStakedRaw.minus(event.params.amount);
-  p.totalStaked = toDecimal(p.totalStakedRaw);
   updateTVL(p);
+
+  let u = getOrCreateUser(event.params.user, event);
+
+  let remainingStake = u.totalStakedRaw.minus(event.params.amount);
+  if (remainingStake.equals(ZERO) && u.hasActiveStake) {
+    p.totalActiveStakers = p.totalActiveStakers.minus(ONE);
+  }
   p.save();
 
-  let user = getOrCreateUser(event.params.user, event);
-  user.totalUnstakedRaw = user.totalUnstakedRaw.plus(event.params.amount);
-  user.hasActiveStake = false;
-  user.save();
+  u.totalUnstakedRaw = u.totalUnstakedRaw.plus(event.params.amount);
+  u.hasActiveStake = false;
+  u.save();
+
+  // NOTE: Cannot update LockStat here because Unstaked event doesn't include lockOption
+
+  let w = getOrCreateWeeklyData(
+    weekId(event.block.timestamp),
+    event.block.timestamp,
+  );
+  let m = getOrCreateMonthlyData(
+    monthId(event.block.timestamp),
+    event.block.timestamp,
+  );
+  let y = getOrCreateYearlyData(
+    yearId(event.block.timestamp),
+    event.block.timestamp,
+  );
+
+  w.unstakingVolumeRaw = w.unstakingVolumeRaw.plus(event.params.amount);
+  w.netStakingFlowRaw = w.netStakingFlowRaw.minus(event.params.amount);
+
+  m.unstakingVolumeRaw = m.unstakingVolumeRaw.plus(event.params.amount);
+  m.netStakingFlowRaw = m.netStakingFlowRaw.minus(event.params.amount);
+
+  y.unstakingVolumeRaw = y.unstakingVolumeRaw.plus(event.params.amount);
+  y.netStakingFlowRaw = y.netStakingFlowRaw.minus(event.params.amount);
+
+  if (remainingStake.equals(ZERO) && u.hasActiveStake) {
+    w.activeStakersCount = w.activeStakersCount.minus(ONE);
+    m.activeStakersCount = m.activeStakersCount.minus(ONE);
+    y.activeStakersCount = y.activeStakersCount.minus(ONE);
+  }
+
+  syncTimeSeriesSnapshots(event, w, m, y);
 }
+
+/* ======================================================
+   REWARDS
+====================================================== */
 
 export function handleRewardClaimed(event: RewardClaimed): void {
   trackTx(event);
 
-  // let lock = getOrCreateLockStat(event.params.lockOption);
-  // lock.totalRewardsDistributedRaw = lock.totalRewardsDistributedRaw.plus(
-  //   event.params.reward,
-  // );
-  // lock.totalRewardsDistributed = toDecimal(lock.totalRewardsDistributedRaw);
-  // lock.save();
-
-  let p = getProtocol(event.block.number, event.block.timestamp);
+  let p = getProtocol(event);
   p.totalRewardsDistributedRaw = p.totalRewardsDistributedRaw.plus(
     event.params.reward,
   );
-  p.totalRewardsDistributed = toDecimal(p.totalRewardsDistributedRaw);
   p.save();
 
-  let user = getOrCreateUser(event.params.user, event);
-  user.totalRewardsClaimedRaw = user.totalRewardsClaimedRaw.plus(
-    event.params.reward,
+  // NOTE: Cannot update LockStat here because RewardClaimed event doesn't include lockOption
+
+  let u = getOrCreateUser(event.params.user, event);
+  u.totalRewardsClaimedRaw = u.totalRewardsClaimedRaw.plus(event.params.reward);
+  u.save();
+
+  // Update weekly/monthly/yearly reward metrics
+  let w = getOrCreateWeeklyData(
+    weekId(event.block.timestamp),
+    event.block.timestamp,
   );
-  user.totalRewardsClaimed = toDecimal(user.totalRewardsClaimedRaw);
-  user.save();
+  let m = getOrCreateMonthlyData(
+    monthId(event.block.timestamp),
+    event.block.timestamp,
+  );
+  let y = getOrCreateYearlyData(
+    yearId(event.block.timestamp),
+    event.block.timestamp,
+  );
+
+  w.rewardsDistributedRaw = w.rewardsDistributedRaw.plus(event.params.reward);
+  m.rewardsDistributedRaw = m.rewardsDistributedRaw.plus(event.params.reward);
+  y.rewardsDistributedRaw = y.rewardsDistributedRaw.plus(event.params.reward);
+
+  syncTimeSeriesSnapshots(event, w, m, y);
 }
 
 export function handleCompounded(event: Compounded): void {
   trackTx(event);
 
-  let p = getProtocol(event.block.number, event.block.timestamp);
+  let p = getProtocol(event);
   p.totalStakedRaw = p.totalStakedRaw.plus(event.params.rewardAdded);
-  p.totalStaked = toDecimal(p.totalStakedRaw);
   updateTVL(p);
   p.save();
 }
 
+/* ======================================================
+   OTHER EVENTS
+====================================================== */
+
+// capx
+export function handleRevenueMint(event: RevenueMint): void {
+  trackTx(event);
+}
+
+export function handleTreasuryAddressUpdated(
+  event: TreasuryAddressUpdated,
+): void {
+  trackTx(event);
+}
+
+export function handleDaoAddressUpdated(event: DaoAddressUpdated): void {
+  trackTx(event);
+}
+
+export function handleExemptionUpdated(event: ExemptionUpdated): void {
+  trackTx(event);
+}
+
+// staking
 export function handleRewardsDeposited(event: RewardsDeposited): void {
+  trackTx(event);
+}
+
+export function handleTokenRecovered(event: TokenRecovered): void {
+  trackTx(event);
+}
+
+export function handleLockMultiplierUpdated(
+  event: LockMultiplierUpdated,
+): void {
+  trackTx(event);
+}
+
+export function handleMinStakeAmountUpdated(
+  event: MinStakeAmountUpdated,
+): void {
+  trackTx(event);
+}
+
+export function handleBaseAprUpdated(event: BaseAprUpdated): void {
   trackTx(event);
 }
