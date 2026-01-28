@@ -606,8 +606,9 @@ export function handleStaked(event: Staked): void {
   s.save();
 
   let p = getProtocol(event);
+  let wasActive = u.hasActiveStake;
 
-  if (!u.hasActiveStake) {
+  if (!wasActive) {
     p.totalActiveStakers = p.totalActiveStakers.plus(ONE);
   }
 
@@ -645,7 +646,7 @@ export function handleStaked(event: Staked): void {
   y.stakingVolumeRaw = y.stakingVolumeRaw.plus(event.params.amount);
   y.netStakingFlowRaw = y.netStakingFlowRaw.plus(event.params.amount);
 
-  if (!u.hasActiveStake) {
+  if (!wasActive) {
     w.activeStakersCount = w.activeStakersCount.plus(ONE);
     m.activeStakersCount = m.activeStakersCount.plus(ONE);
     y.activeStakersCount = y.activeStakersCount.plus(ONE);
@@ -662,9 +663,10 @@ export function handleUnstaked(event: Unstaked): void {
   updateTVL(p);
 
   let u = getOrCreateUser(event.params.user, event);
+  let wasActive = u.hasActiveStake;
 
   let remainingStake = u.totalStakedRaw.minus(event.params.amount);
-  if (remainingStake.equals(ZERO) && u.hasActiveStake) {
+  if (remainingStake.equals(ZERO) && wasActive) {
     p.totalActiveStakers = p.totalActiveStakers.minus(ONE);
   }
   p.save();
@@ -697,7 +699,7 @@ export function handleUnstaked(event: Unstaked): void {
   y.unstakingVolumeRaw = y.unstakingVolumeRaw.plus(event.params.amount);
   y.netStakingFlowRaw = y.netStakingFlowRaw.minus(event.params.amount);
 
-  if (remainingStake.equals(ZERO) && u.hasActiveStake) {
+  if (remainingStake.equals(ZERO) && wasActive) {
     w.activeStakersCount = w.activeStakersCount.minus(ONE);
     m.activeStakersCount = m.activeStakersCount.minus(ONE);
     y.activeStakersCount = y.activeStakersCount.minus(ONE);
@@ -725,7 +727,6 @@ export function handleRewardClaimed(event: RewardClaimed): void {
   u.totalRewardsClaimedRaw = u.totalRewardsClaimedRaw.plus(event.params.reward);
   u.save();
 
-  // Update weekly/monthly/yearly reward metrics
   let w = getOrCreateWeeklyData(
     weekId(event.block.timestamp),
     event.block.timestamp,
