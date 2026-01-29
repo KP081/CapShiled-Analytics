@@ -35,6 +35,7 @@ import {
   VestingPosition,
   StakingPosition,
   RoleAccount,
+  DailyData,
   WeeklyData,
   MonthlyData,
   YearlyData,
@@ -52,9 +53,25 @@ const PROTOCOL_ID = "CAPX";
 const ZERO = BigInt.zero();
 const ONE = BigInt.fromI32(1);
 
+// Default APR configuration (12% base)
+const DEFAULT_BASE_APR_BPS = BigInt.fromI32(1200);
+const DEFAULT_MIN_STAKE = BigInt.fromI32(1000).times(
+  BigInt.fromI32(10).pow(18),
+);
+
+// Default lock multipliers
+const DEFAULT_FLEX_MULT = BigInt.fromI32(10000); // 1.0x
+const DEFAULT_30D_MULT = BigInt.fromI32(12500); // 1.25x
+const DEFAULT_90D_MULT = BigInt.fromI32(15000); // 1.50x
+const DEFAULT_180D_MULT = BigInt.fromI32(20000); // 2.00x
+
 /* ======================================================
-   HELPERS
+   TIME HELPERS
 ====================================================== */
+
+function dayId(ts: BigInt): string {
+  return (ts.toI64() / 86400).toString();
+}
 
 function weekId(ts: BigInt): string {
   return (ts.toI64() / 604800).toString();
@@ -113,6 +130,14 @@ function getProtocol(event: ethereum.Event): Protocol {
     p.totalTreasuryMintedRaw = ZERO;
     p.totalDAOmintedRaw = ZERO;
 
+    // Initialize APR configuration
+    p.currentBaseAprBps = DEFAULT_BASE_APR_BPS;
+    p.flexMultiplierBps = DEFAULT_FLEX_MULT;
+    p.days30MultiplierBps = DEFAULT_30D_MULT;
+    p.days90MultiplierBps = DEFAULT_90D_MULT;
+    p.days180MultiplierBps = DEFAULT_180D_MULT;
+    p.minStakeAmount = DEFAULT_MIN_STAKE;
+
     p.lastUpdateBlock = event.block.number;
     p.lastUpdateTimestamp = event.block.timestamp;
 
@@ -162,6 +187,11 @@ function getOrCreateUser(addr: Address, event: ethereum.Event): User {
     p.lastUpdateTimestamp = event.block.timestamp;
     p.save();
 
+    // Increment newUsers in all time periods
+    let d = getOrCreateDailyData(
+      dayId(event.block.timestamp),
+      event.block.timestamp,
+    );
     let w = getOrCreateWeeklyData(
       weekId(event.block.timestamp),
       event.block.timestamp,
@@ -175,11 +205,12 @@ function getOrCreateUser(addr: Address, event: ethereum.Event): User {
       event.block.timestamp,
     );
 
+    d.newUsers = d.newUsers.plus(ONE);
     w.newUsers = w.newUsers.plus(ONE);
     m.newUsers = m.newUsers.plus(ONE);
     y.newUsers = y.newUsers.plus(ONE);
 
-    syncTimeSeriesSnapshots(event, w, m, y);
+    syncTimeSeriesSnapshots(event, d, w, m, y);
   }
 
   return u;
@@ -208,6 +239,35 @@ function getOrCreateLockStat(lockOption: i32): LockStat {
 /* ======================================================
    TIME SERIES HELPERS
 ====================================================== */
+
+function getOrCreateDailyData(id: string, ts: BigInt): DailyData {
+  let d = DailyData.load(id);
+  if (d == null) {
+    d = new DailyData(id);
+    d.timestamp = ts;
+    d.totalTransactions = ZERO;
+    d.transferCount = ZERO;
+    d.transferVolumeRaw = ZERO;
+    d.stakingVolumeRaw = ZERO;
+    d.unstakingVolumeRaw = ZERO;
+    d.netStakingFlowRaw = ZERO;
+    d.rewardsDistributedRaw = ZERO;
+    d.newUsers = ZERO;
+    d.cumulativeUsers = ZERO;
+    d.activeStakersCount = ZERO;
+
+    let p = Protocol.load(PROTOCOL_ID);
+    if (p != null) {
+      d.tvlStartRaw = p.totalTVLRaw;
+    } else {
+      d.tvlStartRaw = ZERO;
+    }
+
+    d.tvlEndRaw = ZERO;
+    d.tvlPeakRaw = ZERO;
+  }
+  return d;
+}
 
 function getOrCreateWeeklyData(id: string, ts: BigInt): WeeklyData {
   let w = WeeklyData.load(id);
@@ -302,28 +362,34 @@ function getOrCreateYearlyData(id: string, ts: BigInt): YearlyData {
 
 function syncTimeSeriesSnapshots(
   event: ethereum.Event,
+  d: DailyData,
   w: WeeklyData,
   m: MonthlyData,
   y: YearlyData,
 ): void {
   let p = getProtocol(event);
 
+  d.cumulativeUsers = p.totalUsers;
   w.cumulativeUsers = p.totalUsers;
   m.cumulativeUsers = p.totalUsers;
   y.cumulativeUsers = p.totalUsers;
 
+  d.activeStakersCount = p.totalActiveStakers;
   w.activeStakersCount = p.totalActiveStakers;
   m.activeStakersCount = p.totalActiveStakers;
   y.activeStakersCount = p.totalActiveStakers;
 
+  d.tvlEndRaw = p.totalTVLRaw;
   w.tvlEndRaw = p.totalTVLRaw;
   m.tvlEndRaw = p.totalTVLRaw;
   y.tvlEndRaw = p.totalTVLRaw;
 
+  if (p.totalTVLRaw.gt(d.tvlPeakRaw)) d.tvlPeakRaw = p.totalTVLRaw;
   if (p.totalTVLRaw.gt(w.tvlPeakRaw)) w.tvlPeakRaw = p.totalTVLRaw;
   if (p.totalTVLRaw.gt(m.tvlPeakRaw)) m.tvlPeakRaw = p.totalTVLRaw;
   if (p.totalTVLRaw.gt(y.tvlPeakRaw)) y.tvlPeakRaw = p.totalTVLRaw;
 
+  d.save();
   w.save();
   m.save();
   y.save();
@@ -347,6 +413,10 @@ function trackTx(event: ethereum.Event): void {
     p.lastUpdateTimestamp = event.block.timestamp;
     p.save();
 
+    let d = getOrCreateDailyData(
+      dayId(event.block.timestamp),
+      event.block.timestamp,
+    );
     let w = getOrCreateWeeklyData(
       weekId(event.block.timestamp),
       event.block.timestamp,
@@ -360,11 +430,12 @@ function trackTx(event: ethereum.Event): void {
       event.block.timestamp,
     );
 
+    d.totalTransactions = d.totalTransactions.plus(ONE);
     w.totalTransactions = w.totalTransactions.plus(ONE);
     m.totalTransactions = m.totalTransactions.plus(ONE);
     y.totalTransactions = y.totalTransactions.plus(ONE);
 
-    syncTimeSeriesSnapshots(event, w, m, y);
+    syncTimeSeriesSnapshots(event, d, w, m, y);
   }
 }
 
@@ -439,6 +510,10 @@ export function handleTransfer(event: Transfer): void {
     updateUserActivity(to, event);
   }
 
+  let d = getOrCreateDailyData(
+    dayId(event.block.timestamp),
+    event.block.timestamp,
+  );
   let w = getOrCreateWeeklyData(
     weekId(event.block.timestamp),
     event.block.timestamp,
@@ -452,6 +527,9 @@ export function handleTransfer(event: Transfer): void {
     event.block.timestamp,
   );
 
+  d.transferCount = d.transferCount.plus(ONE);
+  d.transferVolumeRaw = d.transferVolumeRaw.plus(event.params.amount);
+
   w.transferCount = w.transferCount.plus(ONE);
   w.transferVolumeRaw = w.transferVolumeRaw.plus(event.params.amount);
 
@@ -461,11 +539,11 @@ export function handleTransfer(event: Transfer): void {
   y.transferCount = y.transferCount.plus(ONE);
   y.transferVolumeRaw = y.transferVolumeRaw.plus(event.params.amount);
 
-  syncTimeSeriesSnapshots(event, w, m, y);
+  syncTimeSeriesSnapshots(event, d, w, m, y);
 }
 
 /* ======================================================
-   MINT / BURN / TREASURY FEE / REVENUE MINT
+   MINT / BURN / TREASURY FEE
 ====================================================== */
 
 export function handleMint(event: Mint): void {
@@ -475,7 +553,6 @@ export function handleMint(event: Mint): void {
 
   p.circulatingSupplyRaw = p.circulatingSupplyRaw.plus(event.params.amount);
 
-  // Mint event has role parameter to track which role is minting
   if (event.params.role.equals(BigInt.fromI32(1))) {
     p.totalTeamMintedRaw = p.totalTeamMintedRaw.plus(event.params.amount);
   } else if (event.params.role.equals(BigInt.fromI32(2))) {
@@ -495,10 +572,9 @@ export function handleRevenueMint(event: RevenueMint): void {
   trackTx(event);
 
   let p = getProtocol(event);
-  
+
   let tokensMinted = event.params.tokensMinted;
 
-  // Update circulating supply
   p.circulatingSupplyRaw = p.circulatingSupplyRaw.plus(tokensMinted);
 
   p.lastUpdateBlock = event.block.number;
@@ -574,6 +650,10 @@ export function handleVestingCreated(event: VestingCreated): void {
   );
   updateUserActivity(user, event);
 
+  let d = getOrCreateDailyData(
+    dayId(event.block.timestamp),
+    event.block.timestamp,
+  );
   let w = getOrCreateWeeklyData(
     weekId(event.block.timestamp),
     event.block.timestamp,
@@ -587,7 +667,7 @@ export function handleVestingCreated(event: VestingCreated): void {
     event.block.timestamp,
   );
 
-  syncTimeSeriesSnapshots(event, w, m, y);
+  syncTimeSeriesSnapshots(event, d, w, m, y);
 }
 
 export function handleTokensClaimed(event: TokensClaimed): void {
@@ -613,6 +693,10 @@ export function handleTokensClaimed(event: TokensClaimed): void {
   user.totalVestingClaimedRaw = user.totalVestingClaimedRaw.plus(claimed);
   updateUserActivity(user, event);
 
+  let d = getOrCreateDailyData(
+    dayId(event.block.timestamp),
+    event.block.timestamp,
+  );
   let w = getOrCreateWeeklyData(
     weekId(event.block.timestamp),
     event.block.timestamp,
@@ -626,7 +710,7 @@ export function handleTokensClaimed(event: TokensClaimed): void {
     event.block.timestamp,
   );
 
-  syncTimeSeriesSnapshots(event, w, m, y);
+  syncTimeSeriesSnapshots(event, d, w, m, y);
 }
 
 export function handleVestingRevoked(event: VestingRevoked): void {
@@ -657,6 +741,10 @@ export function handleVestingRevoked(event: VestingRevoked): void {
       p.lastUpdateTimestamp = event.block.timestamp;
       p.save();
 
+      let d = getOrCreateDailyData(
+        dayId(event.block.timestamp),
+        event.block.timestamp,
+      );
       let w = getOrCreateWeeklyData(
         weekId(event.block.timestamp),
         event.block.timestamp,
@@ -670,7 +758,7 @@ export function handleVestingRevoked(event: VestingRevoked): void {
         event.block.timestamp,
       );
 
-      syncTimeSeriesSnapshots(event, w, m, y);
+      syncTimeSeriesSnapshots(event, d, w, m, y);
 
       break;
     }
@@ -726,6 +814,10 @@ export function handleStaked(event: Staked): void {
   u.totalStakedRaw = u.totalStakedRaw.plus(event.params.amount);
   updateUserActivity(u, event);
 
+  let d = getOrCreateDailyData(
+    dayId(event.block.timestamp),
+    event.block.timestamp,
+  );
   let w = getOrCreateWeeklyData(
     weekId(event.block.timestamp),
     event.block.timestamp,
@@ -739,6 +831,9 @@ export function handleStaked(event: Staked): void {
     event.block.timestamp,
   );
 
+  d.stakingVolumeRaw = d.stakingVolumeRaw.plus(event.params.amount);
+  d.netStakingFlowRaw = d.netStakingFlowRaw.plus(event.params.amount);
+
   w.stakingVolumeRaw = w.stakingVolumeRaw.plus(event.params.amount);
   w.netStakingFlowRaw = w.netStakingFlowRaw.plus(event.params.amount);
 
@@ -748,7 +843,7 @@ export function handleStaked(event: Staked): void {
   y.stakingVolumeRaw = y.stakingVolumeRaw.plus(event.params.amount);
   y.netStakingFlowRaw = y.netStakingFlowRaw.plus(event.params.amount);
 
-  syncTimeSeriesSnapshots(event, w, m, y);
+  syncTimeSeriesSnapshots(event, d, w, m, y);
 }
 
 export function handleUnstaked(event: Unstaked): void {
@@ -797,6 +892,10 @@ export function handleUnstaked(event: Unstaked): void {
   u.hasActiveStake = remainingStake.gt(ZERO);
   updateUserActivity(u, event);
 
+  let d = getOrCreateDailyData(
+    dayId(event.block.timestamp),
+    event.block.timestamp,
+  );
   let w = getOrCreateWeeklyData(
     weekId(event.block.timestamp),
     event.block.timestamp,
@@ -810,6 +909,9 @@ export function handleUnstaked(event: Unstaked): void {
     event.block.timestamp,
   );
 
+  d.unstakingVolumeRaw = d.unstakingVolumeRaw.plus(event.params.amount);
+  d.netStakingFlowRaw = d.netStakingFlowRaw.minus(event.params.amount);
+
   w.unstakingVolumeRaw = w.unstakingVolumeRaw.plus(event.params.amount);
   w.netStakingFlowRaw = w.netStakingFlowRaw.minus(event.params.amount);
 
@@ -819,7 +921,7 @@ export function handleUnstaked(event: Unstaked): void {
   y.unstakingVolumeRaw = y.unstakingVolumeRaw.plus(event.params.amount);
   y.netStakingFlowRaw = y.netStakingFlowRaw.minus(event.params.amount);
 
-  syncTimeSeriesSnapshots(event, w, m, y);
+  syncTimeSeriesSnapshots(event, d, w, m, y);
 }
 
 /* ======================================================
@@ -841,6 +943,10 @@ export function handleRewardClaimed(event: RewardClaimed): void {
   u.totalRewardsClaimedRaw = u.totalRewardsClaimedRaw.plus(event.params.reward);
   updateUserActivity(u, event);
 
+  let d = getOrCreateDailyData(
+    dayId(event.block.timestamp),
+    event.block.timestamp,
+  );
   let w = getOrCreateWeeklyData(
     weekId(event.block.timestamp),
     event.block.timestamp,
@@ -854,11 +960,12 @@ export function handleRewardClaimed(event: RewardClaimed): void {
     event.block.timestamp,
   );
 
+  d.rewardsDistributedRaw = d.rewardsDistributedRaw.plus(event.params.reward);
   w.rewardsDistributedRaw = w.rewardsDistributedRaw.plus(event.params.reward);
   m.rewardsDistributedRaw = m.rewardsDistributedRaw.plus(event.params.reward);
   y.rewardsDistributedRaw = y.rewardsDistributedRaw.plus(event.params.reward);
 
-  syncTimeSeriesSnapshots(event, w, m, y);
+  syncTimeSeriesSnapshots(event, d, w, m, y);
 }
 
 export function handleCompounded(event: Compounded): void {
@@ -871,6 +978,10 @@ export function handleCompounded(event: Compounded): void {
   p.lastUpdateTimestamp = event.block.timestamp;
   p.save();
 
+  let d = getOrCreateDailyData(
+    dayId(event.block.timestamp),
+    event.block.timestamp,
+  );
   let w = getOrCreateWeeklyData(
     weekId(event.block.timestamp),
     event.block.timestamp,
@@ -884,6 +995,9 @@ export function handleCompounded(event: Compounded): void {
     event.block.timestamp,
   );
 
+  d.stakingVolumeRaw = d.stakingVolumeRaw.plus(event.params.rewardAdded);
+  d.netStakingFlowRaw = d.netStakingFlowRaw.plus(event.params.rewardAdded);
+
   w.stakingVolumeRaw = w.stakingVolumeRaw.plus(event.params.rewardAdded);
   w.netStakingFlowRaw = w.netStakingFlowRaw.plus(event.params.rewardAdded);
 
@@ -893,12 +1007,69 @@ export function handleCompounded(event: Compounded): void {
   y.stakingVolumeRaw = y.stakingVolumeRaw.plus(event.params.rewardAdded);
   y.netStakingFlowRaw = y.netStakingFlowRaw.plus(event.params.rewardAdded);
 
-  syncTimeSeriesSnapshots(event, w, m, y);
+  syncTimeSeriesSnapshots(event, d, w, m, y);
+}
+
+/* ======================================================
+   APR / STAKING CONFIG UPDATES
+====================================================== */
+
+export function handleBaseAprUpdated(event: BaseAprUpdated): void {
+  trackTx(event);
+
+  let p = getProtocol(event);
+  p.currentBaseAprBps = event.params.newAprBps;
+  p.lastUpdateBlock = event.block.number;
+  p.lastUpdateTimestamp = event.block.timestamp;
+  p.save();
+}
+
+export function handleMinStakeAmountUpdated(
+  event: MinStakeAmountUpdated,
+): void {
+  trackTx(event);
+
+  let p = getProtocol(event);
+  p.minStakeAmount = event.params.newMinStake;
+  p.lastUpdateBlock = event.block.number;
+  p.lastUpdateTimestamp = event.block.timestamp;
+  p.save();
+}
+
+export function handleLockMultiplierUpdated(
+  event: LockMultiplierUpdated,
+): void {
+  trackTx(event);
+
+  let p = getProtocol(event);
+
+  let lockOption = event.params.lockOption;
+  if (lockOption == 0) {
+    p.flexMultiplierBps = event.params.newMultiplierBps;
+  } else if (lockOption == 1) {
+    p.days30MultiplierBps = event.params.newMultiplierBps;
+  } else if (lockOption == 2) {
+    p.days90MultiplierBps = event.params.newMultiplierBps;
+  } else if (lockOption == 3) {
+    p.days180MultiplierBps = event.params.newMultiplierBps;
+  }
+
+  p.lastUpdateBlock = event.block.number;
+  p.lastUpdateTimestamp = event.block.timestamp;
+  p.save();
 }
 
 /* ======================================================
    OTHER EVENTS
 ====================================================== */
+
+export function handleRewardsDeposited(event: RewardsDeposited): void {
+  trackTx(event);
+}
+
+export function handleTokenRecovered(event: TokenRecovered): void {
+  trackTx(event);
+}
 
 export function handleTreasuryAddressUpdated(
   event: TreasuryAddressUpdated,
@@ -911,29 +1082,5 @@ export function handleDaoAddressUpdated(event: DaoAddressUpdated): void {
 }
 
 export function handleExemptionUpdated(event: ExemptionUpdated): void {
-  trackTx(event);
-}
-
-export function handleRewardsDeposited(event: RewardsDeposited): void {
-  trackTx(event);
-}
-
-export function handleTokenRecovered(event: TokenRecovered): void {
-  trackTx(event);
-}
-
-export function handleLockMultiplierUpdated(
-  event: LockMultiplierUpdated,
-): void {
-  trackTx(event);
-}
-
-export function handleMinStakeAmountUpdated(
-  event: MinStakeAmountUpdated,
-): void {
-  trackTx(event);
-}
-
-export function handleBaseAprUpdated(event: BaseAprUpdated): void {
   trackTx(event);
 }

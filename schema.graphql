@@ -29,6 +29,14 @@ type Protocol @entity(immutable: false) {
   totalTreasuryMintedRaw: BigInt!
   totalDAOmintedRaw: BigInt!
 
+  # APR/APY Configuration
+  currentBaseAprBps: BigInt!
+  flexMultiplierBps: BigInt!
+  days30MultiplierBps: BigInt!
+  days90MultiplierBps: BigInt!
+  days180MultiplierBps: BigInt!
+  minStakeAmount: BigInt!
+
   lastUpdateBlock: BigInt!
   lastUpdateTimestamp: BigInt!
 }
@@ -48,12 +56,12 @@ type LockStat @entity(immutable: false) {
 }
 
 ############################
-# TIME SERIES (WEEK / MONTH / YEAR)
+# TIME SERIES (DAY / WEEK / MONTH / YEAR)
 ############################
 
-type WeeklyData @entity(immutable: false) {
-  id: ID! # weekIndex
-  timestamp: BigInt! # week start timestamp
+type DailyData @entity(immutable: false) {
+  id: ID! # dayIndex
+  timestamp: BigInt! # day start timestamp
   # Activity
   totalTransactions: BigInt!
   transferCount: BigInt!
@@ -74,6 +82,29 @@ type WeeklyData @entity(immutable: false) {
   activeStakersCount: BigInt!
 
   # TVL
+  tvlStartRaw: BigInt!
+  tvlEndRaw: BigInt!
+  tvlPeakRaw: BigInt!
+}
+
+type WeeklyData @entity(immutable: false) {
+  id: ID! # weekIndex
+  timestamp: BigInt! # week start timestamp
+  totalTransactions: BigInt!
+  transferCount: BigInt!
+
+  transferVolumeRaw: BigInt!
+
+  stakingVolumeRaw: BigInt!
+  unstakingVolumeRaw: BigInt!
+  netStakingFlowRaw: BigInt!
+
+  rewardsDistributedRaw: BigInt!
+
+  newUsers: BigInt!
+  cumulativeUsers: BigInt!
+  activeStakersCount: BigInt!
+
   tvlStartRaw: BigInt!
   tvlEndRaw: BigInt!
   tvlPeakRaw: BigInt!
