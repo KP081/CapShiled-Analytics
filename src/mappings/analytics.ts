@@ -40,7 +40,6 @@ import {
   MonthlyData,
   YearlyData,
   Transaction,
-  LockStat,
 } from "../../generated/schema";
 
 import { Address, BigInt, ethereum } from "@graphprotocol/graph-ts";
@@ -217,26 +216,6 @@ function getOrCreateUser(addr: Address, event: ethereum.Event): User {
 }
 
 /* ======================================================
-   LOCK STATS
-====================================================== */
-
-function getOrCreateLockStat(lockOption: i32): LockStat {
-  let id = "lock-" + lockOption.toString();
-  let l = LockStat.load(id);
-
-  if (l == null) {
-    l = new LockStat(id);
-    l.lockOption = lockOption;
-    l.totalLockedRaw = ZERO;
-    l.activePositions = ZERO;
-    l.totalRewardsDistributedRaw = ZERO;
-    l.save();
-  }
-
-  return l;
-}
-
-/* ======================================================
    TIME SERIES HELPERS
 ====================================================== */
 
@@ -253,18 +232,28 @@ function getOrCreateDailyData(id: string, ts: BigInt): DailyData {
     d.netStakingFlowRaw = ZERO;
     d.rewardsDistributedRaw = ZERO;
     d.newUsers = ZERO;
-    d.cumulativeUsers = ZERO;
-    d.activeStakersCount = ZERO;
 
     let p = Protocol.load(PROTOCOL_ID);
     if (p != null) {
+      // Snapshots:
+      d.cumulativeUsers = p.totalUsers;
+      d.activeStakersCount = p.totalActiveStakers;
       d.tvlStartRaw = p.totalTVLRaw;
-    } else {
-      d.tvlStartRaw = ZERO;
-    }
+      d.tvlEndRaw = p.totalTVLRaw;
+      d.tvlPeakRaw = p.totalTVLRaw;
 
-    d.tvlEndRaw = ZERO;
-    d.tvlPeakRaw = ZERO;
+      // Cumulative treasury:
+      d.treasuryBalanceRaw = p.totalTreasuryFeeRaw.plus(
+        p.totalTreasuryMintedRaw,
+      );
+    } else {
+      d.cumulativeUsers = ZERO;
+      d.activeStakersCount = ZERO;
+      d.tvlStartRaw = ZERO;
+      d.tvlEndRaw = ZERO;
+      d.tvlPeakRaw = ZERO;
+      d.treasuryBalanceRaw = ZERO;
+    }
   }
   return d;
 }
@@ -282,18 +271,25 @@ function getOrCreateWeeklyData(id: string, ts: BigInt): WeeklyData {
     w.netStakingFlowRaw = ZERO;
     w.rewardsDistributedRaw = ZERO;
     w.newUsers = ZERO;
-    w.cumulativeUsers = ZERO;
-    w.activeStakersCount = ZERO;
 
     let p = Protocol.load(PROTOCOL_ID);
     if (p != null) {
+      w.cumulativeUsers = p.totalUsers;
+      w.activeStakersCount = p.totalActiveStakers;
       w.tvlStartRaw = p.totalTVLRaw;
+      w.tvlEndRaw = p.totalTVLRaw;
+      w.tvlPeakRaw = p.totalTVLRaw;
+      w.treasuryBalanceRaw = p.totalTreasuryFeeRaw.plus(
+        p.totalTreasuryMintedRaw,
+      );
     } else {
+      w.cumulativeUsers = ZERO;
+      w.activeStakersCount = ZERO;
       w.tvlStartRaw = ZERO;
+      w.tvlEndRaw = ZERO;
+      w.tvlPeakRaw = ZERO;
+      w.treasuryBalanceRaw = ZERO;
     }
-
-    w.tvlEndRaw = ZERO;
-    w.tvlPeakRaw = ZERO;
   }
   return w;
 }
@@ -311,18 +307,25 @@ function getOrCreateMonthlyData(id: string, ts: BigInt): MonthlyData {
     m.netStakingFlowRaw = ZERO;
     m.rewardsDistributedRaw = ZERO;
     m.newUsers = ZERO;
-    m.cumulativeUsers = ZERO;
-    m.activeStakersCount = ZERO;
 
     let p = Protocol.load(PROTOCOL_ID);
     if (p != null) {
+      m.cumulativeUsers = p.totalUsers;
+      m.activeStakersCount = p.totalActiveStakers;
       m.tvlStartRaw = p.totalTVLRaw;
+      m.tvlEndRaw = p.totalTVLRaw;
+      m.tvlPeakRaw = p.totalTVLRaw;
+      m.treasuryBalanceRaw = p.totalTreasuryFeeRaw.plus(
+        p.totalTreasuryMintedRaw,
+      );
     } else {
+      m.cumulativeUsers = ZERO;
+      m.activeStakersCount = ZERO;
       m.tvlStartRaw = ZERO;
+      m.tvlEndRaw = ZERO;
+      m.tvlPeakRaw = ZERO;
+      m.treasuryBalanceRaw = ZERO;
     }
-
-    m.tvlEndRaw = ZERO;
-    m.tvlPeakRaw = ZERO;
   }
   return m;
 }
@@ -340,24 +343,31 @@ function getOrCreateYearlyData(id: string, ts: BigInt): YearlyData {
     y.netStakingFlowRaw = ZERO;
     y.rewardsDistributedRaw = ZERO;
     y.newUsers = ZERO;
-    y.cumulativeUsers = ZERO;
-    y.activeStakersCount = ZERO;
 
     let p = Protocol.load(PROTOCOL_ID);
     if (p != null) {
+      y.cumulativeUsers = p.totalUsers;
+      y.activeStakersCount = p.totalActiveStakers;
       y.tvlStartRaw = p.totalTVLRaw;
+      y.tvlEndRaw = p.totalTVLRaw;
+      y.tvlPeakRaw = p.totalTVLRaw;
+      y.treasuryBalanceRaw = p.totalTreasuryFeeRaw.plus(
+        p.totalTreasuryMintedRaw,
+      );
     } else {
+      y.cumulativeUsers = ZERO;
+      y.activeStakersCount = ZERO;
       y.tvlStartRaw = ZERO;
+      y.tvlEndRaw = ZERO;
+      y.tvlPeakRaw = ZERO;
+      y.treasuryBalanceRaw = ZERO;
     }
-
-    y.tvlEndRaw = ZERO;
-    y.tvlPeakRaw = ZERO;
   }
   return y;
 }
 
 /* ======================================================
-   TIME SERIES SYNC
+   TIME SERIES SYNC 
 ====================================================== */
 
 function syncTimeSeriesSnapshots(
@@ -369,6 +379,7 @@ function syncTimeSeriesSnapshots(
 ): void {
   let p = getProtocol(event);
 
+  // Snapshots (current state):
   d.cumulativeUsers = p.totalUsers;
   w.cumulativeUsers = p.totalUsers;
   m.cumulativeUsers = p.totalUsers;
@@ -384,6 +395,14 @@ function syncTimeSeriesSnapshots(
   m.tvlEndRaw = p.totalTVLRaw;
   y.tvlEndRaw = p.totalTVLRaw;
 
+  // Cumulative treasury balance:
+  let treasuryBalance = p.totalTreasuryFeeRaw.plus(p.totalTreasuryMintedRaw);
+  d.treasuryBalanceRaw = treasuryBalance;
+  w.treasuryBalanceRaw = treasuryBalance;
+  m.treasuryBalanceRaw = treasuryBalance;
+  y.treasuryBalanceRaw = treasuryBalance;
+
+  // TVL peaks:
   if (p.totalTVLRaw.gt(d.tvlPeakRaw)) d.tvlPeakRaw = p.totalTVLRaw;
   if (p.totalTVLRaw.gt(w.tvlPeakRaw)) w.tvlPeakRaw = p.totalTVLRaw;
   if (p.totalTVLRaw.gt(m.tvlPeakRaw)) m.tvlPeakRaw = p.totalTVLRaw;
@@ -566,6 +585,28 @@ export function handleMint(event: Mint): void {
   p.lastUpdateBlock = event.block.number;
   p.lastUpdateTimestamp = event.block.timestamp;
   p.save();
+
+  // Update time series treasury balance (if treasury mint)
+  if (event.params.role.equals(BigInt.fromI32(2))) {
+    let d = getOrCreateDailyData(
+      dayId(event.block.timestamp),
+      event.block.timestamp,
+    );
+    let w = getOrCreateWeeklyData(
+      weekId(event.block.timestamp),
+      event.block.timestamp,
+    );
+    let m = getOrCreateMonthlyData(
+      monthId(event.block.timestamp),
+      event.block.timestamp,
+    );
+    let y = getOrCreateYearlyData(
+      yearId(event.block.timestamp),
+      event.block.timestamp,
+    );
+
+    syncTimeSeriesSnapshots(event, d, w, m, y);
+  }
 }
 
 export function handleRevenueMint(event: RevenueMint): void {
@@ -607,6 +648,26 @@ export function handleTreasuryFee(event: TreasuryFee): void {
   p.lastUpdateBlock = event.block.number;
   p.lastUpdateTimestamp = event.block.timestamp;
   p.save();
+
+  // Update time series treasury balance
+  let d = getOrCreateDailyData(
+    dayId(event.block.timestamp),
+    event.block.timestamp,
+  );
+  let w = getOrCreateWeeklyData(
+    weekId(event.block.timestamp),
+    event.block.timestamp,
+  );
+  let m = getOrCreateMonthlyData(
+    monthId(event.block.timestamp),
+    event.block.timestamp,
+  );
+  let y = getOrCreateYearlyData(
+    yearId(event.block.timestamp),
+    event.block.timestamp,
+  );
+
+  syncTimeSeriesSnapshots(event, d, w, m, y);
 }
 
 /* ======================================================
@@ -776,7 +837,6 @@ export function handleStaked(event: Staked): void {
   trackTx(event);
 
   let u = getOrCreateUser(event.params.user, event);
-  let l = getOrCreateLockStat(event.params.lockOption);
   let p = getProtocol(event);
 
   let wasActive = u.hasActiveStake;
@@ -805,10 +865,6 @@ export function handleStaked(event: Staked): void {
   p.lastUpdateBlock = event.block.number;
   p.lastUpdateTimestamp = event.block.timestamp;
   p.save();
-
-  l.totalLockedRaw = l.totalLockedRaw.plus(event.params.amount);
-  l.activePositions = l.activePositions.plus(ONE);
-  l.save();
 
   u.hasActiveStake = true;
   u.totalStakedRaw = u.totalStakedRaw.plus(event.params.amount);

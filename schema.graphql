@@ -42,20 +42,6 @@ type Protocol @entity(immutable: false) {
 }
 
 ############################
-# LOCK STATS (QUERY SEPARATELY)
-############################
-
-type LockStat @entity(immutable: false) {
-  id: ID! # "lock-0", "lock-1", ...
-  lockOption: Int! # 0=FLEX,1=30d,2=90d,3=180d
-  activePositions: BigInt!
-
-  totalLockedRaw: BigInt!
-
-  totalRewardsDistributedRaw: BigInt!
-}
-
-############################
 # TIME SERIES (DAY / WEEK / MONTH / YEAR)
 ############################
 
@@ -85,6 +71,10 @@ type DailyData @entity(immutable: false) {
   tvlStartRaw: BigInt!
   tvlEndRaw: BigInt!
   tvlPeakRaw: BigInt!
+
+  # Treasury Balance (for Treasury Growth chart)
+  # Calculated as: totalTreasuryFeeRaw + totalTreasuryMintedRaw
+  treasuryBalanceRaw: BigInt!
 }
 
 type WeeklyData @entity(immutable: false) {
@@ -108,6 +98,8 @@ type WeeklyData @entity(immutable: false) {
   tvlStartRaw: BigInt!
   tvlEndRaw: BigInt!
   tvlPeakRaw: BigInt!
+
+  treasuryBalanceRaw: BigInt!
 }
 
 type MonthlyData @entity(immutable: false) {
@@ -130,6 +122,8 @@ type MonthlyData @entity(immutable: false) {
   tvlStartRaw: BigInt!
   tvlEndRaw: BigInt!
   tvlPeakRaw: BigInt!
+
+  treasuryBalanceRaw: BigInt!
 }
 
 type YearlyData @entity(immutable: false) {
@@ -152,6 +146,8 @@ type YearlyData @entity(immutable: false) {
   tvlStartRaw: BigInt!
   tvlEndRaw: BigInt!
   tvlPeakRaw: BigInt!
+
+  treasuryBalanceRaw: BigInt!
 }
 
 ############################
