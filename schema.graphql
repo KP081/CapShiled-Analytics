@@ -1,254 +1,414 @@
-############################
-# PROTOCOL (MASTER ENTITY)
-############################
+"""
+CAPShield Analytics Subgraph Schema
+Multi-position staking with proper activeStakers tracking
+"""
+# ============================================
+# PROTOCOL LEVEL
+# ============================================
 
 type Protocol @entity(immutable: false) {
-  id: ID! # "CAPX"
-  totalUsers: BigInt!
-  totalActiveStakers: BigInt!
+  """
+  Global protocol statistics (singleton)
+  ID is always "1"
+  """
+  id: ID!
 
-  totalTransactions: BigInt!
+  # Token Supply (CAPX in Wei)
+  totalSupply: BigInt!
+  totalBurned: BigInt!
+  totalMinted: BigInt!
+  totalCirculating: BigInt!
 
-  # Staking & vesting (raw + normalized)
-  totalStakedRaw: BigInt!
-  totalVestedRaw: BigInt!
+  # Staking Stats
+  totalStaked: BigInt!
+  totalUnstaked: BigInt!
+  totalRewardsClaimed: BigInt!
+  totalCompounded: BigInt!
+  totalActivePositions: Int! # Total active positions across all users
+  uniqueStakers: Int! # Total unique users who have ever staked (cumulative)
+  activeStakers: Int! # Current users with at least one active position
+  # Vesting Stats
+  totalVestingAllocated: BigInt!
+  totalVestingClaimed: BigInt!
+  totalVestingRevoked: BigInt!
+  activeVestingSchedules: Int!
 
-  # Cached invariant: totalTVL = totalStaked + totalVested
-  totalTVLRaw: BigInt!
+  # Treasury Stats
+  treasuryBalance: BigInt!
+  totalTreasuryFees: BigInt!
+  totalTreasuryMinted: BigInt!
 
-  # Rewards
-  totalRewardsDistributedRaw: BigInt!
-  totalVestingClaimedRaw: BigInt!
+  # Minting Stats
+  totalTeamMinted: BigInt!
+  totalDaoMinted: BigInt!
 
-  # Supply
-  circulatingSupplyRaw: BigInt!
-  totalBurnedRaw: BigInt!
+  # User Stats
+  totalUsers: Int!
+  totalTransfers: Int!
 
-  totalTreasuryFeeRaw: BigInt!
-  totalTeamMintedRaw: BigInt!
-  totalTreasuryMintedRaw: BigInt!
-  totalDAOmintedRaw: BigInt!
+  # Computed
+  totalValueLocked: BigInt! # totalStaked + totalVestingAllocated
+  currentAPR: BigDecimal!
 
-  # APR/APY Configuration
-  currentBaseAprBps: BigInt!
-  flexMultiplierBps: BigInt!
-  days30MultiplierBps: BigInt!
-  days90MultiplierBps: BigInt!
-  days180MultiplierBps: BigInt!
-  minStakeAmount: BigInt!
-
-  lastUpdateBlock: BigInt!
+  # Timestamps
   lastUpdateTimestamp: BigInt!
+  lastUpdateBlock: BigInt!
 }
 
-############################
-# TIME SERIES (DAY / WEEK / MONTH / YEAR)
-############################
-
-type DailyData @entity(immutable: false) {
-  id: ID! # dayIndex
-  timestamp: BigInt! # day start timestamp
-  # Activity
-  totalTransactions: BigInt!
-  transferCount: BigInt!
-
-  # Volume
-  transferVolumeRaw: BigInt!
-
-  stakingVolumeRaw: BigInt!
-  unstakingVolumeRaw: BigInt!
-  netStakingFlowRaw: BigInt!
-
-  # Rewards
-  rewardsDistributedRaw: BigInt!
-
-  # Users
-  newUsers: BigInt!
-  cumulativeUsers: BigInt!
-  activeStakersCount: BigInt!
-
-  # TVL
-  tvlStartRaw: BigInt!
-  tvlEndRaw: BigInt!
-  tvlPeakRaw: BigInt!
-
-  # Treasury Balance (for Treasury Growth chart)
-  # Calculated as: totalTreasuryFeeRaw + totalTreasuryMintedRaw
-  treasuryBalanceRaw: BigInt!
-}
-
-type WeeklyData @entity(immutable: false) {
-  id: ID! # weekIndex
-  timestamp: BigInt! # week start timestamp
-  totalTransactions: BigInt!
-  transferCount: BigInt!
-
-  transferVolumeRaw: BigInt!
-
-  stakingVolumeRaw: BigInt!
-  unstakingVolumeRaw: BigInt!
-  netStakingFlowRaw: BigInt!
-
-  rewardsDistributedRaw: BigInt!
-
-  newUsers: BigInt!
-  cumulativeUsers: BigInt!
-  activeStakersCount: BigInt!
-
-  tvlStartRaw: BigInt!
-  tvlEndRaw: BigInt!
-  tvlPeakRaw: BigInt!
-
-  treasuryBalanceRaw: BigInt!
-}
-
-type MonthlyData @entity(immutable: false) {
-  id: ID! # monthIndex
-  timestamp: BigInt! # month start
-  totalTransactions: BigInt!
-  transferCount: BigInt!
-  transferVolumeRaw: BigInt!
-
-  stakingVolumeRaw: BigInt!
-  unstakingVolumeRaw: BigInt!
-  netStakingFlowRaw: BigInt!
-
-  rewardsDistributedRaw: BigInt!
-
-  newUsers: BigInt!
-  cumulativeUsers: BigInt!
-  activeStakersCount: BigInt!
-
-  tvlStartRaw: BigInt!
-  tvlEndRaw: BigInt!
-  tvlPeakRaw: BigInt!
-
-  treasuryBalanceRaw: BigInt!
-}
-
-type YearlyData @entity(immutable: false) {
-  id: ID! # yearIndex
-  timestamp: BigInt! # year start
-  totalTransactions: BigInt!
-  transferCount: BigInt!
-  transferVolumeRaw: BigInt!
-
-  stakingVolumeRaw: BigInt!
-  unstakingVolumeRaw: BigInt!
-  netStakingFlowRaw: BigInt!
-
-  rewardsDistributedRaw: BigInt!
-
-  newUsers: BigInt!
-  cumulativeUsers: BigInt!
-  activeStakersCount: BigInt!
-
-  tvlStartRaw: BigInt!
-  tvlEndRaw: BigInt!
-  tvlPeakRaw: BigInt!
-
-  treasuryBalanceRaw: BigInt!
-}
-
-############################
-# USERS
-############################
+# ============================================
+# USER LEVEL
+# ============================================
 
 type User @entity(immutable: false) {
-  id: ID! # address hex
-  address: Bytes!
+  """
+  Per-user aggregated data
+  ID is wallet address (lowercase)
+  """
+  id: ID!
 
-  firstSeenBlock: BigInt
-  firstSeenTimestamp: BigInt
+  # ===== RELATIONSHIPS (Auto-populated via @derivedFrom) =====
 
-  txCount: BigInt!
-  lastActivityTimestamp: BigInt
+  # Active stake positions (up to 4)
+  stakePositions: [StakePosition!]! @derivedFrom(field: "user")
 
-  hasActiveStake: Boolean!
-  totalStakedRaw: BigInt!
-  totalUnstakedRaw: BigInt!
+  # Vesting schedule (0 or 1)
+  vestingSchedule: VestingSchedule @derivedFrom(field: "beneficiary")
 
-  totalRewardsClaimedRaw: BigInt!
+  # Transaction history
+  stakeTransactions: [StakeTransaction!]! @derivedFrom(field: "user")
+  unstakeTransactions: [UnstakeTransaction!]! @derivedFrom(field: "user")
+  claimTransactions: [ClaimTransaction!]! @derivedFrom(field: "user")
+  compoundTransactions: [CompoundTransaction!]! @derivedFrom(field: "user")
+  vestingClaims: [VestingClaimTransaction!]! @derivedFrom(field: "beneficiary")
+  transfersOut: [TransferTransaction!]! @derivedFrom(field: "from")
+  transfersIn: [TransferTransaction!]! @derivedFrom(field: "to")
 
-  hasActiveVesting: Boolean!
-  totalVestingAllocatedRaw: BigInt!
-  totalVestingClaimedRaw: BigInt!
+  # ===== AGGREGATED STATS =====
 
-  stakingPositions: [StakingPosition!]! @derivedFrom(field: "user")
+  # Token Balance
+  capxBalance: BigInt!
 
-  vestingPositions: [VestingPosition!]! @derivedFrom(field: "user")
+  # Staking Totals (lifetime)
+  totalStaked: BigInt!
+  totalUnstaked: BigInt!
+  totalRewardsClaimed: BigInt!
+  totalCompounded: BigInt!
+
+  # Current Staking State
+  currentTotalStaked: BigInt! # Sum of all active positions
+  activePositionsCount: Int! # How many of 4 slots occupied (0-4)
+  # Position slot status (for easy filtering)
+  hasFlexPosition: Boolean!
+  has30DPosition: Boolean!
+  has90DPosition: Boolean!
+  has180DPosition: Boolean!
+
+  # Vesting Totals
+  vestingAllocated: BigInt!
+  vestingClaimed: BigInt!
+  hasVesting: Boolean!
+
+  # Transfer Stats
+  totalSent: BigInt!
+  totalReceived: BigInt!
+
+  # Activity Counts
+  stakeTransactionCount: Int!
+  unstakeTransactionCount: Int!
+  claimTransactionCount: Int!
+  compoundTransactionCount: Int!
+  transferCount: Int!
+
+  # Timestamps
+  firstSeenTimestamp: BigInt!
+  firstSeenBlock: BigInt!
+  lastActivityTimestamp: BigInt!
+  lastActivityBlock: BigInt!
 }
 
-############################
-# STAKING
-############################
+# ============================================
+# STAKE POSITIONS (Current State)
+# ============================================
 
-type StakingPosition @entity(immutable: false) {
-  id: ID! # txHash-logIndex
+type StakePosition @entity(immutable: false) {
+  """
+  Individual active stake position
+  ID: ${userAddress}-${lockOption} (e.g., "0x123-0" for FLEX)
+  One position per lockOption per user
+  """
+  id: ID!
+
   user: User!
-  userAddress: Bytes!
 
-  amountRaw: BigInt!
+  # Position Details
+  lockOption: Int! # 0=FLEX, 1=30D, 2=90D, 3=180D
+  amount: BigInt!
+  unlockTime: BigInt!
+  lastClaimTime: BigInt!
+  isActive: Boolean!
 
-  lockOption: Int!
-  unlockTime: BigInt
-
-  active: Boolean!
-
-  totalRewardsClaimedRaw: BigInt!
-
+  # Creation Info
   stakedAt: BigInt!
   stakedAtBlock: BigInt!
-  unstakedAt: BigInt
+  stakedTxHash: Bytes!
+
+  # Computed (for frontend convenience)
+  effectiveAPR: BigDecimal! # baseAPR * multiplier
+  isUnlocked: Boolean! # computed: block.timestamp >= unlockTime
 }
 
-############################
+# ============================================
 # VESTING
-############################
+# ============================================
 
-type VestingPosition @entity(immutable: false) {
-  id: ID! # txHash-logIndex
-  user: User
-  beneficiary: Bytes!
+type VestingSchedule @entity(immutable: false) {
+  """
+  Vesting schedule (one per beneficiary)
+  ID is beneficiary address (lowercase)
+  """
+  id: ID!
 
-  totalAllocatedRaw: BigInt!
-  totalClaimedRaw: BigInt!
+  beneficiary: User!
+
+  totalAllocation: BigInt!
+  claimed: BigInt!
 
   startTime: BigInt!
-  cliffEnd: BigInt
-  endTime: BigInt!
+  cliffEnd: BigInt!
+  vestingEnd: BigInt!
 
   revoked: Boolean!
-  active: Boolean!
 
+  # Creation
   createdAt: BigInt!
   createdAtBlock: BigInt!
-  revokedAt: BigInt
+  createdTxHash: Bytes!
 }
 
-############################
-# ROLES
-############################
+# ============================================
+# TRANSACTIONS (History)
+# ============================================
 
-type RoleAccount @entity(immutable: false) {
-  id: ID! # role-account
-  role: String!
-  account: Bytes!
+type StakeTransaction @entity(immutable: true) {
+  """
+  Individual stake transaction
+  ID: ${txHash}-${logIndex}
+  """
+  id: ID!
 
-  isActive: Boolean!
-  assignedAtBlock: BigInt!
-  assignedAtTimestamp: BigInt
+  user: User!
 
-  revokedAtBlock: BigInt
-  revokedAtTimestamp: BigInt
-}
+  amount: BigInt!
+  lockOption: Int!
+  unlockTime: BigInt!
 
-############################
-# TRANSACTIONS (LEAN)
-############################
-
-type Transaction @entity(immutable: true) {
-  id: ID! # tx hash
-  blockNumber: BigInt!
   timestamp: BigInt!
+  block: BigInt!
+  txHash: Bytes!
+}
+
+type UnstakeTransaction @entity(immutable: true) {
+  """
+  Individual unstake transaction
+  ID: ${txHash}-${logIndex}
+  """
+  id: ID!
+
+  user: User!
+
+  amount: BigInt!
+  lockOption: Int! # Which position was unstaked
+  rewardsClaimed: BigInt! # Rewards claimed during unstake
+  timestamp: BigInt!
+  block: BigInt!
+  txHash: Bytes!
+}
+
+type ClaimTransaction @entity(immutable: true) {
+  """
+  Individual reward claim transaction
+  ID: ${txHash}-${logIndex}
+  """
+  id: ID!
+
+  user: User!
+
+  reward: BigInt!
+  lockOption: Int! # Which position was claimed from (-1 if unknown)
+  timestamp: BigInt!
+  block: BigInt!
+  txHash: Bytes!
+}
+
+type CompoundTransaction @entity(immutable: true) {
+  """
+  Individual compound transaction
+  ID: ${txHash}-${logIndex}
+  """
+  id: ID!
+
+  user: User!
+
+  rewardAdded: BigInt!
+  lockOption: Int! # Which position was compounded (-1 if unknown)
+  newTotalStaked: BigInt! # Position amount after compounding
+  timestamp: BigInt!
+  block: BigInt!
+  txHash: Bytes!
+}
+
+type VestingClaimTransaction @entity(immutable: true) {
+  """
+  Individual vesting claim transaction
+  ID: ${txHash}-${logIndex}
+  """
+  id: ID!
+
+  beneficiary: User!
+
+  amount: BigInt!
+  totalClaimed: BigInt! # Cumulative claimed after this tx
+  timestamp: BigInt!
+  block: BigInt!
+  txHash: Bytes!
+}
+
+type TransferTransaction @entity(immutable: true) {
+  """
+  Token transfer transaction
+  ID: ${txHash}-${logIndex}
+  """
+  id: ID!
+
+  from: User!
+  to: User!
+
+  amount: BigInt!
+  burnAmount: BigInt! # 1% burned (if not exempt)
+  treasuryAmount: BigInt! # 1% to treasury (if not exempt)
+  netAmount: BigInt! # Amount received by recipient
+  timestamp: BigInt!
+  block: BigInt!
+  txHash: Bytes!
+}
+
+type MintTransaction @entity(immutable: true) {
+  """
+  Token mint transaction
+  ID: ${txHash}-${logIndex}
+  """
+  id: ID!
+
+  to: Bytes!
+  amount: BigInt!
+  role: Int! # 1=Team, 2=Treasury, 4=DAO
+  timestamp: BigInt!
+  block: BigInt!
+  txHash: Bytes!
+}
+
+type BurnTransaction @entity(immutable: true) {
+  """
+  Token burn transaction
+  ID: ${txHash}-${logIndex}
+  """
+  id: ID!
+
+  from: User!
+  amount: BigInt!
+
+  timestamp: BigInt!
+  block: BigInt!
+  txHash: Bytes!
+}
+
+# ============================================
+# SNAPSHOTS (Time-series)
+# ============================================
+
+type HourlySnapshot @entity(immutable: false) {
+  """
+  Hourly protocol snapshots
+  ID is hour timestamp (rounded)
+  """
+  id: ID!
+
+  timestamp: BigInt!
+  periodStartTimestamp: BigInt!
+
+  # Point-in-time values
+  totalSupply: BigInt!
+  totalStaked: BigInt!
+  totalVested: BigInt!
+  treasuryBalance: BigInt!
+  totalValueLocked: BigInt!
+  activePositionsCount: Int!
+  uniqueStakers: Int!
+  activeStakers: Int! 
+  totalUsers: Int!
+
+  # Hourly deltas
+  stakeVolume: BigInt!
+  unstakeVolume: BigInt!
+  rewardsClaimed: BigInt!
+  compounded: BigInt!
+  vestingClaimed: BigInt!
+  transferVolume: BigInt!
+  treasuryFeesCollected: BigInt!
+  burnedAmount: BigInt!
+  mintedAmount: BigInt!
+
+  # User activity
+  newUsers: Int!
+  newStakers: Int!
+  newPositionsCreated: Int!
+  positionsUnstaked: Int!
+
+  # APR
+  currentAPR: BigDecimal!
+}
+
+type DailySnapshot @entity(immutable: false) {
+  """
+  Daily protocol snapshots
+  ID is date (YYYYMMDD)
+  """
+  id: ID!
+
+  date: Int!
+  timestamp: BigInt!
+
+  # Point-in-time values (end of day)
+  totalSupply: BigInt!
+  totalStaked: BigInt!
+  totalVested: BigInt!
+  treasuryBalance: BigInt!
+  totalValueLocked: BigInt!
+  activePositionsCount: Int!
+  uniqueStakers: Int!
+  activeStakers: Int! 
+  totalUsers: Int!
+
+  # Daily deltas
+  stakeVolume: BigInt!
+  unstakeVolume: BigInt!
+  netStakeFlow: BigInt!
+  rewardsClaimed: BigInt!
+  compounded: BigInt!
+  vestingClaimed: BigInt!
+  transferVolume: BigInt!
+  treasuryFeesCollected: BigInt!
+  burnedAmount: BigInt!
+  mintedAmount: BigInt!
+
+  # User activity
+  newUsers: Int!
+  newStakers: Int!
+  newPositionsCreated: Int!
+  positionsUnstaked: Int!
+
+  # Statistics
+  avgAPR: BigDecimal!
+  highTVL: BigInt!
+  lowTVL: BigInt!
 }
